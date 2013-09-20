@@ -1,0 +1,514 @@
+#!/usr/bin/perl -w
+# $Id: slack-diff 122 2006-09-27 07:34:32Z alan $
+# vim:sw=2
+# vim600:fdm=marker
+# Copyright (C) 2004-2006 Alan Sundell <alan@sundell.net>
+# All Rights Reserved.  This program comes with ABSOLUTELY NO WARRANTY.
+# See the file COPYING for details.
+#
+# This script is a wrapper for diff that gives output about special files
+# and file modes. (diff can only compare regular files)
+
+require 5.006;
+use warnings FATAL => qw(all);
+use strict;
+use sigtrap qw(die untrapped normal-signals
+               stack-trace any error-signals);
+
+use Errno;
+use File::stat;
+use File::Basename;
+use File::Find;
+use Getopt::Long;
+use POSIX qw(SIGPIPE strftime);
+use Fcntl qw(:mode);  # provides things like S_IFMT that POSIX does not
+
+
+my $VERSION = '0.1';
+(my $PROG = $0) =~ s#.*/##;
+my @diff;       # diff program to use
+my $exit = 0;   # our exit code
+
+sub compare ($$);
+sub recursive_compare ($$);
+sub filetype_to_string ($;$);
+sub compare_files ($$);
+sub diff ($$);
+
+########################################
+# Environment
+# Helpful prefix to die messages
+$SIG{__DIE__} = sub { die "FATAL[$PROG]: @_"; };
+# Set a reasonable umask
+umask 077;
+# Autoflush on STDOUT
+$|=1;
+# Autoflush on STDERR
+select((select(STDERR), $|=1)[0]);
+
+# Default options
+my %opt = (
+  fakediff   => 1,
+  perms      => 1,
+  'new-file' => 1,
+  diff       => 'diff',
+);
+
+# Config and option parsing
+my $usage = <<EOF;
+Usage: $PROG [options] <file1> <file2>
+       $PROG -r <dir1> <dir2>
+
+Options:
+  -u, -U NUM, --unified=NUM
+      Tell diff to use unified output format.
+  --diff PROG
+      Use this program for diffing, instead of "$opt{diff}"
+  --fakediff
+      Make a fake diff for file modes and other things that are not file
+      contents.  Default is on, can be disabled with --nofakediff.
+  --perms
+      Care about owner, group, and permissions when doing fakediff.
+      Default is on, can be disabled with --noperms.
+  -r, --recursive
+      Recursively compare directories.
+  -N, --new-file
+      Treat missing files as empty.  Default is on, can be disabled with
+      --nonew-file.
+  --unidirectional-new-file
+      Treat only missing files in the first directory as empty.
+  --from-file
+      Treat arguments as a list of files from which to read filenames to
+      compare, two lines at a time.
+  -0, --null
+      Use NULLs instead of newlines as the separator in --from-file mode
+  --devnullhack
+      You have a version of diff that can't deal with -N when not in
+      recursive mode, so we need to feed it /dev/null instead of the
+      missing file.  Default is on, can be disabled with --nodevnullhack.
+  --version
+      Output version info
+  --help
+      Output this help text
+
+Exit codes:
+    0   Found no differences
+    1   Found a difference
+    2   Had a serious error
+    3   Found a difference and had a serious error
+EOF
+
+{
+  Getopt::Long::Configure ("bundling");
+  GetOptions(\%opt,
+    'help|h|?',
+    'version',
+    'null|0',
+    'devnullhack',
+    'new-file|N',
+    'u',
+    'unified|U=i',
+    'recursive|r',
+    'from-file',
+    'unidirectional-new-file',
+    'fakediff!',
+    'perms!',
+    'diff=s',
+    ) or die $usage;
+  if ($opt{help}) {
+    print $usage;
+    exit 0;
+  }
+  if ($opt{version}) {
+    print "$PROG version $VERSION\n";
+    exit 0;
+  }
+}
+
+if ($opt{diff}) {
+  # We split on spaces here to be useful -- so that people can give
+  # their diff options.
+  @diff = split(/\s+/, $opt{diff});
+} else {
+  die "$PROG: No diff program!\n";
+}
+
+if ($opt{'u'}) {
+  push @diff, '-u';
+} elsif ($opt{'unified'}) {
+  $opt{'u'} = 1;  # We use this value later
+  push @diff, "--unified=$opt{'unified'}";
+}
+
+if (not $opt{'devnullhack'}) {
+  push @diff, '-N';
+}
+
+# usually, sigpipe would be someone quitting their pager, so don't sweat it
+$SIG{PIPE} = sub { exit $exit };
+
+if ($opt{'from-file'}) {
+  local $/ = "\0" if $opt{'null'};
+  while (my $old = <>) {
+    my $new = <>;
+    die "Uneven number of lines in --from-file mode!\n"
+      if not defined $new;
+    chomp($old);
+    chomp($new);
+    $exit |= compare($old, $new);
+  }
+} else {
+  die $usage unless $#ARGV == 1;
+  $exit |= compare($ARGV[0], $ARGV[1]);
+}
+exit $exit;
+
+##
+# Subroutines
+
+sub compare ($$) {
+  my ($old, $new) = @_;
+
+  if ($opt{recursive}) {
+    return recursive_compare($old, $new);
+  } else {
+    return compare_files($old, $new);
+  }
+}
+
+# compare two directories.  We do this by walking down the *new*
+# directory, and comparing everything that's there to the stuff in
+# the old directory
+sub recursive_compare ($$) {
+  my ($olddir, $newdir) = @_;
+  my ($retval, $basere, $wanted);
+  my (%seen);
+
+  $retval = 0;
+
+  if (-d $newdir) {
+    $basere = qr(^$newdir);
+    $wanted = sub {
+      my ($newfile) = $_;
+      my $oldfile = $newfile;
+
+      $oldfile =~ s#$basere#$olddir#;
+      $seen{$oldfile} = 1;
+      $retval |= compare_files($oldfile, $newfile);
+    };
+
+    eval { find({ wanted => $wanted , no_chdir => 1}, $newdir) };
+    if ($@) {
+      warn "$PROG: error during find: $@\n";
+      $retval |= 2;
+    }
+  }
+  return $retval
+    if $opt{'unidirectional-new-file'};
+
+  # If we're not unidirectional, we want to go through the old directory
+  # and diff any files we didn't see in the newdir.
+  if (-d $olddir) {
+    $basere = qr(^$olddir);
+    $wanted = sub {
+      my ($oldfile) = $_;
+      my $newfile;
+
+      return if $seen{$oldfile};
+      $newfile = $oldfile;
+
+      $newfile =~ s#$basere#$newdir#;
+      $retval |= compare_files($oldfile, $newfile);
+    };
+
+    eval { find({ wanted => $wanted , no_chdir => 1}, $olddir) };
+    if ($@) {
+      warn "$PROG: error during find: $@\n";
+      $retval |= 2;
+    }
+  }
+  return $retval;
+}
+
+# filetype_to_string(mode)
+# filetype_to_string(mode, plural)
+#
+# Takes a mode returned from stat(), returns a noune describing the filetype,
+# e.g. "directory", "symlink".
+# If the "plural" argument is provided and true, returns the plural form of
+# the noun, e.g. "directories", "symlinks".
+sub filetype_to_string ($;$) {
+  my ($mode, $plural) = @_;
+
+  if (S_ISREG($mode)) {
+    return "regular file".($plural ? "s" : "");
+  } elsif (S_ISDIR($mode)) {
+    return "director".($plural ? "ies" : "y");
+  } elsif (S_ISLNK($mode)) {
+    return "symlink".($plural ? "s" : "");
+  } elsif (S_ISBLK($mode)) {
+    return "block device".($plural ? "s" : "");
+  } elsif (S_ISCHR($mode)) {
+    return "character device".($plural ? "s" : "");
+  } elsif (S_ISFIFO($mode)) {
+    return "fifo".($plural ? "s" : "");
+  } elsif (S_ISSOCK($mode)) {
+    return "socket".($plural ? "s" : "");
+  } else {
+    return "unknown filetype".($plural ? "s" : "");
+  }
+}
+
+# compare_files(oldfile, newfile)
+# This is the actual diffing routine.  It's quite long because we need to
+# deal with all sorts of special cases.  It will print to STDOUT a
+# description of the differences between the two files.  For regular files,
+# diff(1) will be run to show the differences.
+#
+# return codes:
+#       1 found a difference
+#       2 had an error
+#       3 found a difference and had an error
+sub compare_files ($$) {
+  my ($oldname, $newname) = @_;
+  my ($old, $new); # stat buffers
+  my $return = 0;
+
+  # Get rid of unsightly double slashes
+  $oldname =~ s#//#/#g;
+  $newname =~ s#//#/#g;
+  
+  eval { $old = lstat($oldname); };
+  if (not defined $old and not $!{ENOENT}) {
+    warn "$PROG: Could not stat $oldname: $!\n";
+    return 2;
+  }
+  eval { $new = lstat($newname); };
+  if (not defined $new and not $!{ENOENT}) {
+    warn "$PROG: Could not stat $newname: $!\n";
+    return 2;
+  }
+  # At this point, $old or $new should only be undefined if the
+  # file does not exist.
+
+  if (defined $old and defined $new) {
+    if (S_IFMT($old->mode) != S_IFMT($new->mode)) {
+      if ($opt{fakediff}) {
+        fakediff('filetype',
+          $oldname => filetype_to_string($old->mode),
+          $newname => filetype_to_string($new->mode),
+        );
+      } else {
+        print "File types differ between ".
+          filetype_to_string($old->mode)." $oldname and ".
+          filetype_to_string($new->mode)." $newname\n";
+      }
+      return 1;
+    }
+    if ($old->nlink != $new->nlink) {
+      # In recursive mode, we don't care about link counts in directories,
+      # as we'll pick that up with what files do and don't exist.
+      unless ($opt{recursive} and S_ISDIR($old->mode)) {
+        if ($opt{fakediff}) {
+          fakediff('nlink',
+            $oldname => $old->nlink,
+            $newname => $new->nlink,
+          );
+        } else {
+          print "Link counts differ between ".
+            filetype_to_string($old->mode, 1).
+            " $oldname and $newname\n";
+        }
+        $return = 1;
+      }
+    } 
+    if ($old->uid != $new->uid and $opt{perms}) {
+      if ($opt{fakediff}) {
+        fakediff('uid',
+          $oldname => $old->uid,
+          $newname => $new->uid,
+        );
+      } else {
+        print "Owner differs between ".
+          filetype_to_string($old->mode, 1).
+          " $oldname and $newname\n";
+      }
+      $return = 1;
+    } 
+    if ($old->gid != $new->gid and $opt{perms}) {
+      if ($opt{fakediff}) {
+        fakediff('gid',
+          $oldname => $old->gid,
+          $newname => $new->gid,
+        );
+      } else {
+        print "Group differs between ".
+          filetype_to_string($old->mode, 1).
+          " $oldname and $newname\n";
+      }
+      $return = 1;
+    }
+    if (S_IMODE($old->mode) != S_IMODE($new->mode) and $opt{perms}) {
+      if ($opt{fakediff}) {
+        fakediff('mode',
+          $oldname => sprintf('%04o', S_IMODE($old->mode)),
+          $newname => sprintf('%04o', S_IMODE($new->mode)),
+        );
+      } else {
+        print "Modes differ between ".
+          filetype_to_string($old->mode, 1).
+          " $oldname and $newname\n";
+      }
+      $return = 1;
+    }
+
+    # We don't want to compare anything more about sockets, fifos, or
+    # directories, once we've checked the permissions and link counts
+    if (S_ISSOCK($old->mode) or
+        S_ISFIFO($old->mode) or
+        S_ISDIR($old->mode)) {
+      return $return;
+    }
+
+    # Check device file devs, and that's it for them
+    if (S_ISCHR($old->mode) or
+        S_ISBLK($old->mode)) {
+      if ($old->rdev != $new->rdev) {
+        if ($opt{fakediff}) {
+          fakediff('rdev',
+            $oldname => $old->rdev,
+            $newname => $new->rdev,
+          );
+        } else {
+          print "Device numbers differ between ".
+            filetype_to_string($old->mode, 1).
+            " $oldname and $newname\n";
+        }
+        $return = 1;
+      }
+      return $return;
+    }
+
+    # Compare the targets of symlinks
+    if (S_ISLNK($old->mode)) {
+      my $oldtarget = readlink $oldname
+        or (warn("$PROG: Could not readlink($oldname): $!\n"),
+            return $return | 2);
+      my $newtarget = readlink $newname
+        or (warn("$PROG: Could not readlink($newname): $!\n"),
+            return $return | 2);
+      if ($oldtarget ne $newtarget) {
+        if ($opt{fakediff}) {
+          fakediff('target',
+            $oldname => $oldtarget,
+            $newname => $newtarget,
+          );
+        } else {
+          print "Symlink targets differ between $oldname and $newname\n";
+        }
+        $return = 1;
+      }
+      return $return;
+    }
+
+    if (not S_ISREG($old->mode)) {
+      warn "$PROG: Don't know what to do with file mode $old->mode!\n";
+      return 2;
+    }
+  } elsif (not defined $old and not defined $new) {
+    print "Neither $oldname nor $newname exists\n";
+    return $return;
+  } elsif (not defined $old) {
+    if (not S_ISREG($new->mode) or not $opt{'new-file'}) {
+      print "Only in ".dirname($newname).": ".
+            filetype_to_string($new->mode)." ".basename($newname)."\n";
+      return 1;
+    } elsif ($opt{'devnullhack'}) {
+      $oldname = '/dev/null';
+    }
+  } elsif (not defined $new) {
+    if (not S_ISREG($old->mode) or not $opt{'new-file'}) {
+      print "Only in ".dirname($oldname).": ".
+            filetype_to_string($old->mode)." ".basename($oldname)."\n";
+      return 1;
+    } elsif ($opt{'devnullhack'}) {
+      $newname = '/dev/null';
+    }
+  }
+  # They are regular files!  We can actually run diff!
+  return diff($oldname, $newname) | $return;
+}
+
+sub diff ($$) {
+  my ($oldname, $newname) = @_;
+  my @command = (@diff, $oldname, $newname);
+  my $status;
+
+  # If we're not specifying unified diff, we need to print a header
+  # to indicate what's being diffed.  (I'm not sure if this actually would
+  # work for patch, but it does tell our user what's going on).
+  # FIXME: We only need to specify this if the files are different
+  print "@command\n"
+    if not $opt{u};
+
+  {
+    # There is a bug in perl with use warnings FATAL => qw(all)
+    # that will cause the child process from system() to stick
+    # around if there is a warning generated.
+    # Shut off warnings -- we'll catch the error below.
+    no warnings;
+    $status = system(@command);
+  }
+  return 0 if ($status == 0);
+  if ($? == -1) {
+    die "$PROG: failed to execute '@command': $!\n";
+  }
+  if ($? & 128) {
+    die "$PROG: '@command' dumped core\n";
+  }
+  if (my $sig = $? & 127) {
+    die "$PROG: '@command' caught sig $sig\n"
+      unless ($sig == SIGPIPE);
+  }
+  if (my $exit = $? >> 8) {
+    if ($exit == 1) {
+      return 1;
+    } else {
+      die "$PROG: '@command' returned $exit\n";
+    }
+  }
+  return 0;
+}
+
+
+sub fakediff ($$) {
+  my ($type, $oldname, $oldvalue, $newname, $newvalue) = @_;
+
+  return unless $opt{fakediff};
+  my $time = strftime('%F %T.000000000 %z', localtime(0));
+
+  # We add a suffix onto the filenames to show we're not actually looking
+  # at file contents.  There's no good way to indicate this that's compatible
+  # with patch, and this is simple enough.
+  $oldname .= '#~~' . $type;
+  $newname .= '#~~' . $type;
+  
+  if ($opt{u}) {
+    # fake up a unified diff
+    print <<EOF;
+--- $oldname\t$time
++++ $newname\t$time
+@@ -1 +1 @@
+-$oldvalue
++$newvalue
+EOF
+  } else {
+    print <<EOF;
+diff $oldname $newname
+1c1
+< $oldvalue
+---
+> $newvalue
+EOF
+  }
+}

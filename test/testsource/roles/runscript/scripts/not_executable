@@ -1,0 +1,3 @@
+#!/bin/sh
+echo "hey, you're not supposed to run me"
+exit 1

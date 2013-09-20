@@ -1,0 +1,111 @@
+#!/usr/bin/perl -w
+# $Id: slack-runscript 118 2006-09-25 18:35:17Z alan $
+# vim:sw=2
+# vim600:fdm=marker
+# Copyright (C) 2004-2006 Alan Sundell <alan@sundell.net>
+# All Rights Reserved.  This program comes with ABSOLUTELY NO WARRANTY.
+# See the file COPYING for details.
+#
+# This script is in charge of running scripts out of the local stage
+
+require 5.006;
+use warnings FATAL => qw(all);
+use strict;
+use sigtrap qw(die untrapped normal-signals
+               stack-trace any error-signals);
+
+use File::Path;
+use File::Find;
+
+use constant LIB_DIR => '/usr/lib/slack';
+use lib LIB_DIR;
+use Slack;
+
+# Export these options to the environment of the script
+my @export_options = qw(root stage hostname verbose);
+
+(my $PROG = $0) =~ s#.*/##;
+
+########################################
+# Environment
+# Helpful prefix to die messages
+$SIG{__DIE__} = sub { die "FATAL[$PROG]: @_"; };
+# Set a reasonable umask
+umask 077;
+# Autoflush on STDERR
+select((select(STDERR), $|=1)[0]);
+# Get out of wherever (possibly NFS-mounted) we were
+chdir('/')
+  or die "Could not chdir '/': $!";
+
+########################################
+# Config and option parsing {{{
+my $usage = Slack::default_usage("$PROG [options] <action> <role> [<role>...]");
+# Option defaults
+my %opt = ();
+Slack::get_options(
+  opthash => \%opt,
+  usage => $usage,
+  required_options => \@export_options,
+);
+
+my $action = shift || die "No script to run!\n\n$usage";
+# Arguments are required
+die "No roles given!\n\n$usage" unless @ARGV;
+
+# }}}
+
+# Start with a clean environment
+%ENV = (
+  PATH => '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+);
+# Export certain variables to the environment.  These are guaranteed to
+# be set because we require them in get_options above.
+for my $option (@export_options) {
+  my $env_var = $option;
+  $env_var =~ tr/a-z-/A-Z_/;
+  $ENV{$env_var} = $opt{$option};
+}
+# We want to decrement the verbose value for the child if it's set.
+$ENV{VERBOSE}-- if $ENV{VERBOSE};
+
+# Run the script for each role given, if it exists and is executable
+for my $role (@ARGV) {
+  my $script_to_run = "$opt{stage}/roles/$role/scripts/$action";
+  unless (-x $script_to_run) {
+    if (-e _) {
+      # A helpful warning
+      warn "WARNING[$PROG]: Skipping '$script_to_run' because it's not executable\n";
+    } elsif ($opt{verbose} > 0) {
+      print STDERR "$PROG: Skipping '$script_to_run' because it doesn't exist\n";
+    }
+    next;
+  }
+  my $dir;
+  if ($action eq 'fixfiles') {
+    $dir = "$opt{stage}/roles/$role/files";
+  } else {
+    $dir = "$opt{stage}/roles/$role/scripts";
+  }
+  my @command = ($script_to_run, $role);
+
+  # It's OK to chdir even if we're not going to run the script.
+  # Might as well see if it works.
+  chdir($dir)
+    or die "Could not chdir '$dir': $!\n";
+  if ($opt{'dry-run'}) {
+    ($opt{verbose} > 0)
+      and print STDERR "$PROG: Not calling '@command' in '$dir' ".
+        "because --dry-run specified.\n";
+  } else {
+    ($opt{verbose} > 0)
+      and print STDERR "$PROG: Calling '@command' in '$dir'.\n";
+    unless (system(@command) == 0) {
+      Slack::check_system_exit(@command);
+    }
+  }
+  chdir('/')
+    or die "Could not chdir '/': $!\n"
+}
+exit 0;
+

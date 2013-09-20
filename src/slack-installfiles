@@ -1,0 +1,149 @@
+#!/usr/bin/perl -w
+# $Id: slack-installfiles 180 2008-01-19 08:26:19Z alan $
+# vim:sw=2
+# vim600:fdm=marker
+# Copyright (C) 2004-2008 Alan Sundell <alan@sundell.net>
+# All Rights Reserved.  This program comes with ABSOLUTELY NO WARRANTY.
+# See the file COPYING for details.
+#
+# This script is in charge of copying files from the local stage to the root
+# of the local filesystem
+
+require 5.006;
+use warnings FATAL => qw(all);
+use strict;
+use sigtrap qw(die untrapped normal-signals
+               stack-trace any error-signals);
+
+use File::Path;
+
+use constant LIB_DIR => '/usr/lib/slack';
+use lib LIB_DIR;
+use Slack;
+
+my @rsync = ('rsync',
+             '--relative',
+             '--times',
+             '--perms',
+             '--group',
+             '--owner',
+             '--links',
+             '--devices',
+             '--sparse',
+             '--no-implied-dirs', # SO GOOD!
+             '--files-from=-',
+             '--from0',
+             );
+
+(my $PROG = $0) =~ s#.*/##;
+
+sub install_files ($);
+
+########################################
+# Environment
+# Helpful prefix to die messages
+$SIG{__DIE__} = sub { die "FATAL[$PROG]: @_"; };
+# Set a reasonable umask
+umask 077;
+# Get out of wherever (possibly NFS-mounted) we were
+chdir("/")
+  or die "Could not chdir /: $!";
+# Autoflush on STDERR
+select((select(STDERR), $|=1)[0]);
+
+########################################
+# Config and option parsing {{{
+my $usage = Slack::default_usage("$PROG [options] <role> [<role>...]");
+# Option defaults
+my %opt = ();
+Slack::get_options(
+  opthash => \%opt,
+  usage => $usage,
+  required_options => [ qw(root stage) ],
+);
+# }}}
+
+# Arguments are required
+die "No roles given!\n\n$usage" unless @ARGV;
+
+unless (-d $opt{root}) {
+    if (not $opt{'dry-run'}) {
+      eval {
+        mkpath($opt{root});
+        # We have a tight umask, and a root of mode 0700 would be undesirable
+        # in most cases.
+        chmod(0755, $opt{root});
+      };
+      die "Could not mkpath destination directory '$opt{root}': $@\n" if $@;
+    }
+    warn "WARNING[$PROG]: Created destination directory '".$opt{root}."'\n";
+}
+
+# Prepare for backups
+if ($opt{backup} and $opt{'backup-dir'}) {
+  # Make sure backup directory exists
+  unless (-d $opt{'backup-dir'}) {
+    ($opt{verbose} > 0) and print STDERR "$PROG: Creating backup directory '$opt{'backup-dir'}'\n";
+    if (not $opt{'dry-run'}) {
+      eval { mkpath($opt{'backup-dir'}); };
+      die "Could not mkpath backup dir '$opt{'backup-dir'}': $@\n" if $@;
+    }
+  }
+  push(@rsync, "--backup", "--backup-dir=$opt{'backup-dir'}");
+}
+# Pass options along to rsync
+if ($opt{'dry-run'}) {
+  push @rsync, '--dry-run';
+}
+if ($opt{'verbose'} > 1) {
+  push @rsync, '--verbose';
+}
+
+# copy over the new files
+for my $role (@ARGV) {
+  install_files($role);
+}
+exit 0;
+
+# This subroutine takes care of actually installing the files for a role
+sub install_files ($) {
+  my ($role) = @_;
+  # final / is important for rsync
+  my $source = $opt{stage} . "/roles/" . $role . "/files/";
+  my $destination = $opt{root} . "/";
+  my @command = (@rsync, $source, $destination);
+
+  if (not -d $source) {
+    ($opt{verbose} > 0) and
+        print STDERR "$PROG: No files to install -- '$source' does not exist\n";
+    return;
+  }
+
+  # Try to give some sensible message here
+  if ($opt{verbose} > 0) {
+    if ($opt{'dry-run'}) {
+      print STDERR "$PROG: Dry-run syncing '$source' to '$destination'\n";
+    } else {
+      print STDERR "$PROG: Syncing '$source' to '$destination'\n";
+    }
+  }
+
+  my ($fh) = Slack::wrap_rsync_fh(@command);
+
+  select((select($fh), $|=1)[0]);  # Turn on autoflush
+
+  my $callback = sub {
+    my ($file) = @_;
+    ($file =~ s#^$source##)
+      or die "sub failed: $source|$file";
+    print $fh "$file\0";
+  };
+
+  # This will print files to be synced to the $fh
+  Slack::find_files_to_install($source, $destination, $callback);
+
+  # Close fh, waitpid, and check return value
+  unless (close($fh)) {
+    Slack::check_system_exit(@command);
+  }
+}

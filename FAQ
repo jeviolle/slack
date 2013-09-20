@@ -1,0 +1,65 @@
+What's so great about slack, then?
+  Nothing, really.  The code is kind of a mess, and I'm sure you can
+  come up with better :)
+
+  People seem to like it, though, and if pressed, I'd say that it's
+  pretty simple to use, and probably close to what you want to be doing,
+  and that it doesn't tend to force some weird strict philosophy on you.
+
+  Also it probably gets major points for existing.
+
+That's it?
+  Pretty much.
+
+Are you associated with the Church of the Subgenius?
+  I don't *think* so...
+
+What does the name stand for?
+  "Sysadmins' Lazy Auto-Configuration Kit".  Yes, this was a "backronym" --
+  I named it "slack" on a dare (see CREDITS).
+    
+What is slack written in?
+  Perl
+
+Why isn't it written in [insert language]?
+  I wanted to use an interpreted language that I didn't have to convince
+  sysadmins to install on their machines, and shell would have ended up
+  looking even worse than this Perl.  Sometimes I do regret it, though.
+  :/
+
+Shouldn't people be using (cfengine/conf packages/whatever)?
+  Probably.  Feel free to try to convince them, but I'd like to stay out
+  of any config-management wars.
+
+Well, then how does slack compare to other config management systems?
+  slack is both less capable and less complicated than most other config
+  management systems out there.  Most people can figure out how to use
+  it with little documentation (not that we shouldn't write more...), but
+  all it can do is move files around and run some scripts.  However, that
+  may turn out to be all you need.
+
+Why did you write slack when all these other systems existed?
+  slack was designed for environments with no pre-existing config management,
+  and in which there was resistance among the admins to get over the up-front
+  costs of learning and implementing other config management systems.  We saw
+  it as kind of a gateway to get lazy people into config management and
+  automated builds, so that they could later "trade up" to more sophisticated
+  systems.
+
+  Now, however, it seems that a lot of people don't need anything more
+  complicated than slack.  That's fine by me; people should use what works best
+  for them.
+
+How do I set up slack to use rsyncd over ssh?
+    1) Generate a public/private keypair for SSH
+    2) Put the private key on clients in /root/.ssh/slack-key
+    3) Add a stanza like this on clients to /root/.ssh/config:
+    Host slack-master
+            User slack
+            IdentityFile /root/.ssh/slack-key
+
+    4) Pick a master server, make a CNAME "slack-master" pointed at it
+    5) Install the slack-master package on that server
+    6) Put the public key on that server in ~slack/.ssh/authorized_keys (see the
+        example in /usr/share/doc/slack-master)
+

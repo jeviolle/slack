@@ -1,0 +1,146 @@
+#!/usr/bin/perl -w
+# $Id: slack-rolediff 125 2006-09-27 07:50:07Z alan $
+# vim:sw=2
+# vim600:fdm=marker
+# Copyright (C) 2004-2006 Alan Sundell <alan@sundell.net>
+# All Rights Reserved.  This program comes with ABSOLUTELY NO WARRANTY.
+# See the file COPYING for details.
+#
+# This script provides a preview of scripts or files about to be installed.
+# Basically, it calls diff -- its smarts are in knowing where things are.
+
+require 5.006;
+use warnings FATAL => qw(all);
+use strict;
+use sigtrap qw(die untrapped normal-signals
+               stack-trace any error-signals);
+
+use File::Path;
+use File::Find;
+
+use constant LIB_DIR => '/usr/lib/slack';
+use lib LIB_DIR;
+use Slack;
+
+my @diff = ('slack-diff',
+              '-uN',
+              );
+
+# directories to compare
+my %subdir = (
+  files => 1,
+  scripts => 1,
+);
+
+(my $PROG = $0) =~ s#.*/##;
+
+sub diff ($$;@);
+
+########################################
+# Environment
+# Helpful prefix to die messages
+$SIG{__DIE__} = sub { die "FATAL[$PROG]: @_"; };
+# Set a reasonable umask
+umask 077;
+# Get out of wherever (possibly NFS-mounted) we were
+chdir("/")
+  or die "Could not chdir /: $!";
+# Autoflush on STDERR
+select((select(STDERR), $|=1)[0]);
+
+########################################
+# Config and option parsing {{{
+my $usage = Slack::default_usage("$PROG [options] <role> [<role>...]");
+$usage .= <<EOF;
+
+  --subdir DIR
+      Check this subdir only.  Possible values for DIR are 'files' and
+      'scripts'.
+
+  --diff PROG
+      Use this program to do diffs.  [@diff]
+EOF
+# Option defaults
+my %opt = ();
+Slack::get_options(
+  opthash => \%opt,
+  command_line_options => [
+    'subdir=s',
+    'diff=s',
+  ],
+  usage => $usage,
+  required_options => [ qw(cache stage root) ],
+);
+
+# Arguments are required
+die "No roles given!\n\n$usage" unless @ARGV;
+
+# We only allow certain values for this option
+if ($opt{subdir}) {
+  unless ($opt{subdir} eq 'files' or $opt{subdir} eq 'scripts') {
+    die "--subdir option must be 'files' or 'scripts'\n\n$usage";
+  }
+  # Only do this subdir
+  %subdir = ( $opt{subdir} => 1 );
+}
+
+# Let people override our diff.  Split on spaces so they can pass args.
+if ($opt{diff}) {
+  @diff = split(/\s+/, $opt{diff});
+}
+
+# }}}
+
+my $exit = 0;
+# Do the diffs
+for my $full_role (@ARGV) {
+  # Split the full role (e.g. google.foogle.woogle) into components
+  my @role = split(/\./, $full_role);
+
+  if ($subdir{scripts}) {
+    # Then we compare the cache vs the stage
+    my $old = $opt{stage} . "/roles/" . $full_role . "/scripts";
+    my $new = $opt{cache} . "/roles/" . $role[0] . "/scripts";
+    # For scripts, we don't care so much about mode and owner (since those are
+    # inherited in the CACHE from the SOURCE), so --noperms.
+    $exit |= diff($old, $new, '--noperms');
+  }
+
+  if ($subdir{files}) {
+    # Then we compare the stage vs the root
+    my $old = $opt{root};
+    my $new = $opt{stage} . "/roles/" . $full_role . "/files";
+    # For files, we don't care about files that exist in $old but not $new
+    $exit |= diff($old, $new, '--unidirectional-new-file');
+  }
+}
+exit $exit;
+
+sub diff ($$;@) {
+  my ($old, $new, @options) = @_;
+
+  my @command = (@diff, @options);
+
+  # return if there's nothing to do
+  return 0 if (not -d $old and not -d $new);
+
+  ($opt{verbose} > 0) and print STDERR "$PROG: Previewing with '@command'\n";
+
+  my $return = 0;
+  my $callback = sub {
+    my ($new_file) = @_;
+    my $old_file = $new_file;
+    ($old_file =~ s#^$new#$old#)
+      or die "sub failed: $new|$new_file";
+    if (system(@command, $old_file, $new_file) != 0) {
+      $return |= Slack::get_system_exit(@command);
+    }
+  };
+
+  # We have to use this function, rather than recursive mode for slack-diff,
+  # because otherwise we'll print a bunch of bogus stuff about directories
+  # that exist in $ROOT and therefore aren't being synced.
+  Slack::find_files_to_install($new, $old, $callback);
+
+  return $return;
+}

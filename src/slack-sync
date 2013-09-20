@@ -1,0 +1,168 @@
+#!/usr/bin/perl -w
+# $Id: slack-sync 180 2008-01-19 08:26:19Z alan $
+# vim:sw=2
+# vim600:fdm=marker
+# Copyright (C) 2004-2008 Alan Sundell <alan@sundell.net>
+# All Rights Reserved.  This program comes with ABSOLUTELY NO WARRANTY.
+# See the file COPYING for details.
+#
+# This script is in charge of copying files from the (possibly remote)
+# master directory to a local cache, using rsync
+
+require 5.006;
+use warnings FATAL => qw(all);
+use strict;
+use sigtrap qw(die untrapped normal-signals
+               stack-trace any error-signals);
+
+use File::Path;
+
+use constant LIB_DIR => '/usr/lib/slack';
+use lib LIB_DIR;
+use Slack;
+
+my @rsync = ('rsync',
+              '--cvs-exclude',
+              '--recursive',
+              '--copy-links',
+              '--times',
+              '--perms',
+              '--sparse',
+              '--delete',
+              '--files-from=-',
+              '--from0',
+              );
+
+(my $PROG = $0) =~ s#.*/##;
+
+sub check_cache ($);
+sub rsync_source ($$@);
+
+########################################
+# Environment
+# Helpful prefix to die messages
+$SIG{__DIE__} = sub { die "FATAL[$PROG]: @_"; };
+# Set a reasonable umask
+umask 077;
+# Get out of wherever (possibly NFS-mounted) we were
+chdir("/")
+  or die "Could not chdir /: $!";
+# Autoflush on STDERR
+select((select(STDERR), $|=1)[0]);
+
+########################################
+# Config and option parsing {{{
+my $usage = Slack::default_usage("$PROG [options] <role> [<role>...]");
+# Option defaults
+my %opt = ();
+Slack::get_options(
+  opthash => \%opt,
+  usage => $usage,
+  required_options => [ qw(source cache) ],
+);
+
+# Arguments are required
+die "No roles given!\n\n$usage" unless @ARGV;
+
+# Prepare for backups
+if ($opt{backup} and $opt{'backup-dir'}) {
+  # Make sure backup directory exists
+  unless (-d $opt{'backup-dir'}) {
+    ($opt{verbose} > 0) and print STDERR "Creating backup directory '$opt{'backup-dir'}'\n";
+    if (not $opt{'dry-run'}) {
+      eval { mkpath($opt{'backup-dir'}); };
+      die "Could not mkpath backup dir '$opt{'backup-dir'}': $@\n" if $@;
+    }
+  }
+  push(@rsync, "--backup", "--backup-dir=$opt{'backup-dir'}");
+}
+# Look at source type, and add options if necessary
+if ($opt{'rsh'} or $opt{source} =~ m/^[\w@\.-]+::/) {
+  # This is tunnelled rsync, and so needs an extra option
+  if ($opt{'rsh'}) {
+    push @rsync, '-e', $opt{'rsh'};
+  } else {
+    push @rsync, '-e', 'ssh';
+  }
+}
+
+# Pass options along to rsync
+if ($opt{'dry-run'}) {
+  push @rsync, '--dry-run';
+}
+# Pass options along to rsync
+if ($opt{'verbose'} > 1) {
+  push @rsync, '--verbose';
+}
+# }}}
+
+my @roles = ();
+
+{
+  # This hash is just to avoid calling rsync twice if two subroles are
+  # installed.  We only care since it's remote, and therefore slow.
+  my %roles_to_sync = ();
+
+  # copy over the new files
+  for my $full_role (@ARGV) {
+    # Get the first element of the role name (the base role)
+    # e.g., from "google.foogle.woogle", get "google"
+    my $base_role = (split /\./, $full_role, 2)[0];
+
+    $roles_to_sync{$base_role} = 1;
+  }
+  @roles = keys %roles_to_sync;
+}
+
+my $cache = $opt{cache} . "/roles/";
+# Make sure we've got the right perms before we copy stuff down
+check_cache($cache);
+
+rsync_source(
+  $opt{source} . '/roles/',
+  $cache,
+  @roles,
+);
+
+exit 0;
+
+# Make sure the cache directory exists and is mode 0700, to protect files
+# underneath in transit
+sub check_cache ($) {
+  my ($cache) = @_;
+  if (not $opt{'dry-run'}) {
+    if (not -d $cache) {
+      ($opt{verbose} > 0) and print STDERR "$PROG: Creating '$cache'\n";
+        eval { mkpath($cache); };
+        die "Could not mkpath cache dir '$cache': $@\n" if $@;
+    }
+    ($opt{verbose} > 0) and print STDERR "$PROG: Checking perms on '$cache'\n";
+    if ($> != 0) {
+      warn "WARNING[$PROG]: Not superuser; unable to chown files\n";
+    } else {
+      chown(0, 0, $cache)
+        or die "Could not chown 0:0 '$cache': $!\n";
+    }
+    chmod(0700, $cache)
+      or die "Could not chmod 0700 '$cache': $!\n";
+  }
+}
+
+# Pull down roles from an rsync source
+sub rsync_source($$@) {
+  my ($source, $destination, @roles) = @_;
+  my @command = (@rsync, $source, $destination);
+
+  ($opt{verbose} > 0)
+    and print STDERR "$PROG: Syncing cache with '@command'\n";
+
+  my ($fh) = Slack::wrap_rsync_fh(@command);
+
+  # Shove the roles down its throat
+  print $fh join("\0", @roles), "\0";
+
+  # Close fh, waitpid, and check return value
+  unless (close($fh)) {
+    Slack::check_system_exit(@command);
+  }
+}

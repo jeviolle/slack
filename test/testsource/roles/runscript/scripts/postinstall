@@ -1,0 +1,3 @@
+#!/bin/sh
+# This intentionally fails so we can test error propagation
+exit 1

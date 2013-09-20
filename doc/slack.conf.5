@@ -1,0 +1,101 @@
+.\" $Header$
+.\" vim:tw=72:filetype=nroff
+.\"
+.\"       manpage for slack.conf
+.\"
+.TH slack.conf 5 2005-05-23 "File formats" 
+
+.SH NAME
+slack.conf \- configuration file for slack
+
+.SH DESCRIPTION
+The file
+.I /etc/slack.conf
+contains configuration information for
+.BR slack (8)
+and its backends.  It should contain one keyword-value pair per line,
+separated by an '=' sign.  Keywords must consist solely of capital
+letters and underscores.  Values may take any appropriate format, but
+must not begin with a space.  Comments start with '#', and all text from
+the '#' to the end of a line is ignored.  Trailing whitespace on lines
+is ignored.  Empty lines or lines consisting of only whitespace and
+comments are ignored.
+
+Valid keywords are:
+.TP
+\fBSOURCE\fP
+The master source for slack roles.  It can be in one of four forms:
+.IP
+.RS
+.IP \(bu
+\fB/path/to/dir\fP
+
+Use a local directory.
+.IP \(bu
+\fBsomehost:/path/to/dir\fP
+
+Use given directory on a remote host via rsync over SSH.
+.IP \(bu
+\fBrsync://somehost/module\fP
+
+Use module on a remote rsyncd server (directly over the network).
+.IP \(bu
+\fBsomehost::module\fP
+
+Use the rsync daemon protocol over SSH to the given host.  See \(lqUSING
+RSYNC-DAEMON FEATURES VIA A REMOTE-SHELL CONNECTION\(rq in
+.BR rsync (1)
+
+.RE
+.IP
+All forms of SOURCE are passed directly to rsync, so you can do things
+like add \(lquser@\(rq before the host on any remote forms.  For more
+about what rsync can do, see its manual page, of course.
+.IP
+For the last form, however, we do a little magic.  rsync treats the last
+two forms equivalently, so we overload the last form by automatically
+passing \(lq-e ssh\(rq to rsync when we see it.  This hack lets us tell
+slack to use this nice feature of rsync just using the SOURCE config
+option.
+.RE
+.TP
+\fBROOT\fP
+The root filesystem into which to install slack roles.  Usually
+.RI ' / '.
+.TP
+\fBROLE_LIST\fP
+The location of the role list, which lists the roles to be installed
+by default on each host.
+
+This can be a path relative to the source, or can be an entirely
+separate location if it starts with a slash or a hostname (optionally
+preceeded by user@).
+.TP
+\fBCACHE\fP
+A local cache directory, used as a local mirror of the SOURCE.
+.TP
+\fBSTAGE\fP
+A local staging directory, used as an intermediate stage when installing
+files.
+.TP
+\fBBACKUP_DIR\fP
+A directory in which to keep dated backups for rollbacks.
+
+.SH EXAMPLE
+
+A typical file might look like this:
+
+  # slack.conf configuration file
+  SOURCE=slack-master:/slack  # source is on a remote
+                              # host named "slack-master"
+  ROLE_LIST=slack-master:/roles.conf
+  ROOT=/
+  CACHE=/var/cache/slack
+  STAGE=/var/lib/slack/stage
+  BACKUP_DIR=/var/lib/slack/backups
+
+.SH FILES
+.I /etc/slack.conf
+.SH SEE ALSO
+.BR slack (8),
+.BR rsync (1)

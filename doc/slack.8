@@ -1,0 +1,178 @@
+.\" $Header$
+.\" vim:tw=72:filetype=nroff
+.\"
+.\"       manpage for slack.conf
+.\"
+.TH slack 8 2004-10-22 "Administrative commands" 
+
+.SH NAME
+slack \- Sysadmin's lazy autoconfiguration kit
+
+.SH SYNOPSIS
+
+\fBslack\fR [\fIoption ...\fR] [\fIrole ...\fR]
+
+.SH DESCRIPTION
+
+slack is a master command which coordinates the activities of its
+backends, which variously:
+
+.IP \(bu
+determine the list of roles to be installed on this server
+.IP \(bu
+create a local cached copy of the role files from the central repository
+.IP \(bu
+merge file trees from subroles into a single, unified tree
+.IP \(bu
+install files onto the local filesystem
+.IP \(bu
+run scripts before and after installation
+
+.PP
+Options you give to slack will be generally passed along to the backends
+where relevant.
+
+.SH OPTIONS
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print a usage statement.
+.TP
+\fB\-\-version\fR
+Print the version and exit.
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+Increase verbosity.  Can be specified multiple times.
+.TP
+\fB\-\-quiet\fR
+Don't be verbose (Overrides previous uses of --verbose).
+.TP
+\fB\-C\fR, \fB\-\-config FILE\fR
+Use the specfied FILE for configuration instead of the default,
+.IR /etc/slack.conf .
+.TP
+\fB\-s\fR, \fB\-\-source DIR\fR
+Source directory for slack files
+.TP
+\fB\-e\fR, \fB\-\-rsh COMMAND\fR
+Remote shell for rsync
+.TP
+\fB\-c\fR, \fB\-\-cache DIR\fR
+Local cache directory for slack files
+.TP
+\fB\-t\fR, \fB\-\-stage DIR\fR
+Local staging directory for slack files
+.TP
+\fB\-r\fR, \fB\-\-root DIR\fR
+Root destination for slack files
+.TP
+\fB\-\-no\-sync\fR
+Skip the slack-sync step (useful if you're pushing stuff into the CACHE
+outside slack).
+.TP
+\fB\-\-no\-files\fR
+Don't install any files in ROOT, but tell rsync to print what it
+would do.
+.TP
+\fB\-\-no\-scripts\fR
+Don't run scripts
+.TP
+\fB\-n\fR, \fB\-\-dry\-run\fR
+Same as \-\-no\-files \-\-no\-scripts  (CACHE, STAGE will still be
+updated)
+.TP
+\fB\-\-role\-list\fR
+Role list for
+.BR slack-getroles (8).
+.TP
+\fB\-b\fR, \fB\-\-backup\fR
+Make backups of existing files in ROOT that are overwritten.  This
+option defaults to on if it is not set to 0 in a config file or disabled
+with --nobackup on the command line.
+.TP
+\fB\-\-backup\-dir\fR
+Put backups from the
+.B \-\-backup
+option into this directory.
+.TP
+\fB\-H\fR, \fB\-\-hostname HOST\fR
+Pretend to be running on HOST, instead of the name given by
+gethostname(2).
+.TP
+\fB\-\-preview MODE\fR
+Do a diff of scripts and files before running them.
+MODE can be one of 'simple' or 'prompt' (See PREVIEW MODES, below).
+.TP
+\fB\-\-diff PROG\fR
+Use this diff program for previews.
+.TP
+\fB\-\-sleep TIME\fR
+Randomly sleep between 1 and TIME seconds before starting
+operations.  Useful in crontabs.
+
+.SH PREVIEW MODES
+
+.PP
+Preview functionality is new in slack 0.14.0.  I haven't quite
+worked out how things will work, so this usage is somewhat subject to
+change in future versions.  I thought I would try it this way and see
+how people like it.
+.PP
+In 'simple' mode, after syncing and staging the files directory, slack
+will present a diff of the files and scripts.  In this mode, slack will
+not run the preinstall or fixfiles scripts, and because of this, it may
+provide some false output about permissions changes to files.
+.PP
+In 'prompt' mode, after syncing and staging the files directory, slack
+will diff the script directory.  If there are differences, slack will
+present them to you and ask you if you want to continue.  If you say
+no, it will exit.  If you say yes, it will stage the scripts directory,
+run the preinstall and fixfiles scripts, and then diff the files in the
+stage with those in the root.  If there are differences, slack will
+present them to you and ask you if you want to continue.  If you say no,
+it will exit.  If you say yes, it will install the files and run the
+postinstall script.
+.PP
+So, the 'simple' mode is easy to use, and will be accurate if you don't
+use fixfiles.  The 'prompt' mode will be accurate if you use fixfiles,
+but requires some interaction.
+.PP
+Why can't we just have one mode that works with fixfiles and requires no
+interaction?  Well, that would require slack to understand what your
+free-form fixfiles executable was going to do, which would either
+require some kind of universe simulator or would require you to write
+your fixfiles in a less free-form way, which would make slack less like
+slack.
+
+.SH EXAMPLES
+
+.PP
+To install all the roles configured in the role list for a server:
+.RS
+slack
+.RE
+.PP
+To install a specific role:
+.RS
+slack
+.I rolename
+.RE
+.PP
+To test a new role before checking in the changes:
+.RS
+slack --source 
+.IR user @ workstation :/home/ user /.../slack
+.I rolename
+.RE
+.PP
+To avoid killing your master server when calling from cron:
+.RS
+slack --sleep 3600
+.RE
+
+
+
+.SH FILES
+.I /etc/slack.conf
+.SH SEE ALSO
+.BR slack.conf (5),
+.BR rsync (1)

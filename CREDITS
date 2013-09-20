@@ -1,0 +1,12 @@
+(Note: A lot of this is from memory, so if I left out or mischaracterized
+ something you contributed, let me know!)
+
+Roman Marxer: lots of help in intial design
+              helped come up with concept of subroles.
+Frank Cusack: lots of strongly-worded early criticism :)
+              the one who said someone should name a project "slack".
+Mikal Still: nagged me near-daily to license the damn thing and put it
+             up on the web
+David Lowry: fixed my hacky spec file
+Googlers: gave me feature requests, bug reports, many of which I dutifully
+          filed in the TODO file and haven't fixed yet :/

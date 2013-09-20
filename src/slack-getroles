@@ -1,0 +1,161 @@
+#!/usr/bin/perl -w
+# $Id: slack-getroles 180 2008-01-19 08:26:19Z alan $
+# vim:sw=2
+# vim600:fdm=marker
+# Copyright (C) 2004-2008 Alan Sundell <alan@sundell.net>
+# All Rights Reserved.  This program comes with ABSOLUTELY NO WARRANTY.
+# See the file COPYING for details.
+
+# This script is in charge of copying files from the (possibly remote)
+# master directory to a local cache, using rsync
+
+require 5.006;
+use warnings FATAL => qw(all);
+use strict;
+use sigtrap qw(die untrapped normal-signals
+               stack-trace any error-signals);
+
+use File::Path;
+
+use constant LIB_DIR => '/usr/lib/slack';
+use lib LIB_DIR;
+use Slack;
+
+my @rsync = ('rsync',
+              '--links',
+              '--times',
+              );
+
+(my $PROG = $0) =~ s#.*/##;
+
+sub sync_list ();
+
+########################################
+# Environment
+# Helpful prefix to die messages
+$SIG{__DIE__} = sub { die "FATAL[$PROG]: @_"; };
+# Set a reasonable umask
+umask 077;
+# Get out of wherever (possibly NFS-mounted) we were
+chdir("/")
+  or die "Could not chdir /: $!";
+# Autoflush on STDERR
+select((select(STDERR), $|=1)[0]);
+
+########################################
+# Config and option parsing {{{
+my $usage = Slack::default_usage("$PROG [options]");
+$usage .= <<EOF;
+
+  --role-list
+      Role list location (can be relative to SOURCE)
+
+  --remote-role-list
+      Role list is remote and should be copied down with rsync
+        (implied by certain forms of role list or SOURCE)
+EOF
+
+# Option defaults
+my %opt = ();
+Slack::get_options(
+  opthash => \%opt,
+  command_line_options => [
+    'role-list=s',
+    'remote-role-list',
+  ],
+  required_options => [ qw(role-list hostname) ],
+  usage => $usage,
+);
+
+# Prepare for backups
+if ($opt{backup} and $opt{'backup-dir'}) {
+  # Make sure backup directory exists
+  unless (-d $opt{'backup-dir'}) {
+    ($opt{verbose} > 0) and print STDERR "Creating backup directory '$opt{'backup-dir'}'\n";
+    if (not $opt{'dry-run'}) {
+      eval { mkpath($opt{'backup-dir'}); };
+      die "Could not mkpath backup dir '$opt{'backup-dir'}': $@\n" if $@;
+    }
+  }
+  push(@rsync, "--backup", "--backup-dir=$opt{'backup-dir'}");
+}
+# Pass options along to rsync
+if ($opt{'dry-run'}) {
+  push @rsync, '--dry-run';
+}
+# Pass options along to rsync
+if ($opt{'verbose'} > 1) {
+  push @rsync, '--verbose';
+}
+# }}}
+
+# See if role-list is actually relative to source, and pre-pend source
+# if need be.
+unless ($opt{'role-list'} =~ m#^/# or
+        $opt{'role-list'} =~ m#^\./# or
+        $opt{'role-list'} =~ m#^[\w@\.-]+:#) {
+  if (not defined $opt{source}) {
+    die "Relative path to role-list given, but source not defined!\n\n$usage\n";
+  }
+  $opt{'role-list'} = $opt{source} . '/' . $opt{'role-list'};
+}
+
+# auto-detect remote role list
+if ($opt{'role-list'} =~ m#^[\w@\.-]+:#) {
+  $opt{'remote-role-list'} = 1;
+}
+
+# Copy a remote list locally
+if ($opt{'remote-role-list'}) {
+  # We need a cache directory if the role list is not local
+  if (not defined $opt{cache}) {
+    die "Remote path to role-list given, but cache not defined!\n\n$usage\n";
+  }
+  # Look at source type, and add options if necessary
+  if ($opt{'rsh'} or $opt{'role-list'} =~ m/^[\w@\.-]+::/) {
+    # This is tunnelled rsync, and so needs an extra option
+    if ($opt{'rsh'}) {
+      push @rsync, '-e', $opt{'rsh'};
+    } else {
+      push @rsync, '-e', 'ssh';
+    }
+  }
+  sync_list();
+}
+
+# Read in the roles list
+my @roles = ();
+my $host_found = 0;
+($opt{verbose} > 0) and print STDERR "$PROG: Reading '$opt{'role-list'}'\n";
+open(ROLES, "<", $opt{'role-list'})
+  or die "Could not open '$opt{'role-list'}' for reading: $!\n";
+while(<ROLES>) {
+  s/#.*//;  # Strip comments
+  chomp;
+  if (s/^$opt{hostname}:\s*//) {
+    $host_found++;
+    push @roles, split();
+  }
+}
+close(ROLES)
+  or die "Could not close '$opt{'role-list'}': $!\n";
+if (not $host_found) {
+  die "Host '$opt{hostname}' not found in '$opt{'role-list'}'!\n";
+}
+print join("\n", @roles), "\n";
+exit 0;
+
+sub sync_list () {
+  my $source = $opt{'role-list'};
+  my $destination = $opt{cache} . "/_role_list";
+  unless (-d $opt{cache}) {
+    eval { mkpath($opt{cache}); };
+    die "Could not mkpath '$opt{cache}': $@\n" if $@;
+  }
+  # All this to run an rsync command
+  my @command = (@rsync, $source, $destination);
+  ($opt{verbose} > 0) and print STDERR "$PROG: Calling '@command'\n";
+  Slack::wrap_rsync(@command);
+  $opt{'role-list'} = $destination;
+}
+

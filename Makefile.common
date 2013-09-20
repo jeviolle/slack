@@ -1,0 +1,27 @@
+# Common code included in every Makefile
+# $Id: Makefile.common 189 2008-04-21 00:52:56Z sundell $
+
+PACKAGE=slack
+VERSION=0.15.2
+
+DESTDIR		=
+
+prefix		= /
+exec_prefix	= /usr
+sysconfdir	= ${prefix}/etc
+mandir		= ${exec_prefix}/share/man
+bindir		= ${exec_prefix}/bin
+sbindir		= ${exec_prefix}/sbin
+libdir		= ${exec_prefix}/lib
+libexecdir	= ${exec_prefix}/lib
+localstatedir	= ${prefix}/var
+
+slack_libdir		= ${libdir}/slack
+slack_libexecdir	= ${libexecdir}/slack
+slack_localstatedir	= ${localstatedir}/lib/slack
+slack_localcachedir	= ${localstatedir}/cache/slack
+
+INSTALL		= install
+MKDIR		= mkdir -p
+
+PRIVDIRMODE	= 0700

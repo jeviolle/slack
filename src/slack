@@ -1,0 +1,329 @@
+#!/usr/bin/perl -w
+# $Id: slack 180 2008-01-19 08:26:19Z alan $
+# vim:sw=2
+# vim600:fdm=marker
+# Copyright (C) 2004-2008 Alan Sundell <alan@sundell.net>
+# All Rights Reserved.  This program comes with ABSOLUTELY NO WARRANTY.
+# See the file COPYING for details.
+
+# This script is in charge of copying files from the (possibly remote)
+# master directory to a local cache, using rsync
+
+require 5.006;
+use warnings FATAL => qw(all);
+use strict;
+use sigtrap qw(die untrapped normal-signals
+               stack-trace any error-signals);
+
+use File::Path;
+use File::Find;
+use POSIX; # for strftime
+
+use constant LIBEXEC_DIR => '/usr/lib/slack';
+use constant LIB_DIR => '/usr/lib/slack';
+use lib LIB_DIR;
+use Slack;
+
+sub run_backend(@);
+sub run_conditional_backend($@);
+
+(my $PROG = $0) =~ s#.*/##;
+
+# Arguments to pass to each backends (initialized to a hash of empty arrays)
+my %backend_flags = ( map { $_ => [] }
+  qw(getroles sync stage preview preinstall fixfiles installfiles postinstall)
+);
+
+my @roles;
+
+########################################
+# Environment
+# Helpful prefix to die messages
+$SIG{__DIE__} = sub { die "FATAL[$PROG]: @_"; };
+# Set a reasonable umask
+umask 077;
+# Get out of wherever (possibly NFS-mounted) we were
+chdir("/")
+  or die "Could not chdir /: $!";
+# Autoflush on STDERR
+select((select(STDERR), $|=1)[0]);
+
+########################################
+# Config and option parsing {{{
+my $usage = Slack::default_usage("$PROG [options] [<role>...]");
+$usage .= <<EOF;
+
+  --preview MODE
+      Do a diff of scripts and files before running them.
+      MODE can be one of 'simple' or 'prompt'.
+
+  --no-files
+      Don't install any files in ROOT, but tell rsync to print what
+      it would do.
+
+  --no-scripts
+      Don't run scripts.
+
+  --no-sync
+      Skip the slack-sync step.  (useful if you're pushing stuff into
+        the CACHE outside of slack)
+
+  --role-list
+      Role list for slack-getroles
+
+  --libexec-dir DIR
+      Look for backend scripts in this directory.
+
+  --diff PROG
+      Use this diff program for previews
+
+  --sleep TIME
+      Randomly sleep between 1 and TIME seconds before starting
+      operations
+EOF
+
+# Options
+my %opt = ();
+# So we can distinguish stuff on the command line from config file stuff
+my %command_line_opt = ();
+Slack::get_options(
+  opthash => \%opt,
+  command_line_options => [
+    'preview=s',
+    'role-list=s',
+    'no-scripts|noscripts',
+    'no-files|nofiles',
+    'no-sync|nosync',
+    'libexec-dir=s',
+    'diff=s',
+    'sleep=i',
+  ],
+  required_options => [ qw(source cache stage root) ],
+  command_line_hash => \%command_line_opt,
+  usage => $usage,
+);
+
+# Special options
+if ($opt{'dry-run'}) {
+  $opt{'no-scripts'} = 1;
+  $opt{'no-files'} = 1;
+}
+if ($opt{'no-scripts'}) {
+  for my $action (qw(fixfiles preinstall postinstall)) {
+    push @{$backend_flags{$action}},
+      '--dry-run';
+  }
+}
+if ($opt{'no-files'}) {
+  push @{$backend_flags{installfiles}},
+    '--dry-run';
+}
+# propagate verbosity - 1 to all backends
+if (defined $command_line_opt{'verbose'} and
+    $command_line_opt{'verbose'} > 1) {
+  for my $action (keys %backend_flags) {
+    push @{$backend_flags{$action}},
+      ('--verbose') x ($command_line_opt{'verbose'} - 1);
+  }
+}
+# propagate these flags to all the backends
+for my $option (qw(config root cache stage source hostname rsh)) {
+  if ($command_line_opt{$option}) {
+    for my $action (keys %backend_flags) {
+      push @{$backend_flags{$action}},
+        "--$option=$command_line_opt{$option}";
+    }
+  }
+}
+# getroles also can take 'role-list'
+if ($command_line_opt{'role-list'}) {
+  push @{$backend_flags{'getroles'}},
+    "--role-list=$command_line_opt{'role-list'}";
+}
+
+# The libexec dir defaults to this if it wasn't specified
+# on the command line or in a config file.
+if (not defined $opt{'libexec-dir'}) {
+  $opt{'libexec-dir'} = LIBEXEC_DIR;
+}
+
+# Pass diff option along to slack-rolediff
+if ($opt{'diff'}) {
+  push @{$backend_flags{preview}},
+    "--diff=$opt{'diff'}";
+}
+
+# Preview takes an optional argument.  If no argument is given,
+# it gets "" from getopt.
+if (defined $opt{'preview'}) {
+  if (not grep /^$opt{'preview'}$/, qw(simple prompt)) {
+    die "Unknown preview mode '$opt{'preview'}'!";
+  }
+}
+    
+# The backup option defaults to on if it wasn't specified
+# on the command line or in a config file
+if (not defined $opt{backup}) {
+  $opt{backup} = 1;
+}
+# Figure out a place to put backups
+if ($opt{backup} and $opt{'backup-dir'}) {
+  push @{$backend_flags{installfiles}},
+    '--backup',
+    '--backup-dir='.
+      $opt{'backup-dir'}.
+      "/".
+      strftime('%F-%T', localtime(time))
+    ;
+}
+# }}}
+
+# Random sleep, helpful when called from cron.
+if ($opt{sleep}) {
+  my $secs = int(rand($opt{sleep})) + 1;
+  $opt{verbose} and print STDERR "$PROG: sleep $secs\n";
+  sleep($secs);
+}
+
+# Get a list of roles to install from slack-getroles {{{
+if (not @ARGV) {
+  my @command = ($opt{'libexec-dir'}.'/slack-getroles',
+    @{$backend_flags{'getroles'}});
+  $opt{verbose} and print STDERR "$PROG: getroles\n";
+  ($opt{verbose} > 2) and print STDERR "$PROG: Calling '@command' to get a list of roles for this host.\n";
+  my ($roles_pid, $roles_fh);
+  if ($roles_pid = open($roles_fh, "-|")) {
+    # Parent
+  } elsif (defined $roles_pid) {
+    # Child
+    exec(@command);
+    die "Could not exec '@command': $!\n";
+  } else {
+    die "Could not fork to run '@command': $!\n";
+  }
+  @roles = split(/\s+/, join(" ", <$roles_fh>));
+  unless (close($roles_fh)) {
+    Slack::check_system_exit(@command);
+  }
+} else {
+  @roles = @ARGV;
+}
+# }}}
+
+# Check role name syntax {{{
+for my $role (@roles) {
+  # Roles MUST begin with a letter.  All else is reserved.
+  if ($role !~ m/^[a-zA-Z]/) {
+    die "Role '$role' does not begin with a letter!";
+  }
+}
+# }}}
+
+$opt{verbose} and print STDERR "$PROG: installing roles: @roles\n";
+
+unless ($opt{'no-sync'}) {
+  # sync all the roles down at once
+  $opt{verbose} and print STDERR "$PROG: sync @roles\n";
+  run_backend('slack-sync',
+    @{$backend_flags{sync}}, @roles);
+}
+
+ROLE: for my $role (@roles) {
+  # stage
+  $opt{verbose} and print STDERR "$PROG: stage files $role\n";
+  run_backend('slack-stage',
+    @{$backend_flags{stage}}, '--subdir=files', $role);
+  
+  if ($opt{preview}) {
+    if ($opt{preview} eq 'simple') {
+      $opt{verbose} and print STDERR "$PROG: preview $role\n";
+      # Here, we run the backend in no-prompt mode.
+      run_conditional_backend(0, 'slack-rolediff',
+        @{$backend_flags{preview}}, $role);
+      # ...and we skip further action in the ROLE after showing the diff.
+      next ROLE;
+    } elsif ($opt{preview} eq 'prompt') {
+      $opt{verbose} and print STDERR "$PROG: preview scripts $role\n";
+      # Here, we want to prompt and just do the scripts, since
+      # we need to run preinstall and fixfiles before doing the files.
+      run_conditional_backend(1, 'slack-rolediff',
+        @{$backend_flags{preview}}, '--subdir=scripts', $role);
+    } else {
+      # Should get caught in option processing, above
+      die "Unknown preview mode!\n";
+    }
+  }
+
+  $opt{verbose} and print STDERR "$PROG: stage scripts $role\n";
+  run_backend('slack-stage',
+    @{$backend_flags{stage}}, '--subdir=scripts', $role);
+
+  # preinstall
+  $opt{verbose} and print STDERR "$PROG: preinstall $role\n";
+  run_backend('slack-runscript',
+    @{$backend_flags{preinstall}}, 'preinstall', $role);
+
+  # fixfiles
+  $opt{verbose} and print STDERR "$PROG: fixfiles $role\n";
+  run_backend('slack-runscript',
+    @{$backend_flags{fixfiles}}, 'fixfiles', $role);
+
+  # preview files
+  if ($opt{preview} and $opt{preview} eq 'prompt') {
+      $opt{verbose} and print STDERR "$PROG: preview files $role\n";
+      run_conditional_backend(1, 'slack-rolediff',
+        @{$backend_flags{preview}}, '--subdir=files', $role);
+  }
+
+  # installfiles
+  $opt{verbose} and print STDERR "$PROG: install $role\n";
+  run_backend('slack-installfiles',
+    @{$backend_flags{installfiles}}, $role);
+
+  # postinstall
+  $opt{verbose} and print STDERR "$PROG: postinstall $role\n";
+  run_backend('slack-runscript',
+    @{$backend_flags{postinstall}}, 'postinstall', $role);
+}
+exit 0;
+
+sub run_backend (@) {
+  my ($backend, @args) = @_;
+  # If we weren't given an explicit path, prepend the libexec dir
+  unless ($backend =~ m#^/#) {
+    $backend = $opt{'libexec-dir'} . '/' . $backend;
+  }
+
+  # Assemble our command line
+  my (@command) = ($backend, @args);
+  ($opt{verbose} > 2) and print STDERR "$PROG: Calling '@command'\n";
+  unless (system(@command) == 0) {
+    Slack::check_system_exit(@command);
+  }
+}
+
+sub run_conditional_backend ($@) {
+  my ($prompt, $backend, @args) = @_;
+  # If we weren't given an explicit path, prepend the libexec dir
+  unless ($backend =~ m#^/#) {
+    $backend = $opt{'libexec-dir'} . '/' . $backend;
+  }
+
+  # Assemble our command line
+  my (@command) = ($backend, @args);
+  ($opt{verbose} > 2) and print STDERR "$PROG: Calling '@command'\n";
+  unless (system(@command) == 0) {
+    my $exit = Slack::get_system_exit(@command);
+
+    if ($exit == 1) {
+      # exit 1 means a difference found or something normal that requires
+      # a prompt before continuing.
+      if ($prompt) {
+        exit 1 unless Slack::prompt("Continue? [yN] ") eq 'y';
+      }
+    } else {
+      # any other non-successful exit is a serious error.
+      die "'@command' exited $exit";
+    }
+  }
+}

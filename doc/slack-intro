@@ -1,0 +1,101 @@
+What slack does (overview):
+
+slack copies a set files down from a central repository onto your local
+machine, and it lets you write some scripts to run before and after doing
+installing the files.
+
+slack doesn't care about file conflicts, and it can't uninstall things.
+It places no limitations on your scripts (it just exec()s them, so
+technically they could be binaries), so it has absolutely no idea what
+they will do (I haven't invented the parallel universe simulator yet to
+see how the world will react to the actions of your scripts).
+
+Each set of files and scripts is called a "role".  Several roles can be
+installed on one machine.  You can also have "subroles" inside a role, which
+sort of get overlaid on top of the base role, but more about that later.
+
+The roles all live together in the "slack repository."  Generally, you
+want to put this on some central server(s), backed by some sort of
+source control repository, but slack just needs a directory somewhere.
+
+You can configure which roles live on a particular machine using a
+simple text file (which can live in the repository, or not).  Or you
+could write another backend and get your roles from DNS or LDAP or
+something (I've never felt the need).
+
+slack has a fair number of options to change its behavior, which can be
+specified in an optional configuration file, /etc/slack.conf, on the
+host running slack, or on the command line (which takes precedence over
+the config file).  The location of the config file can also be specified
+on the command line.
+
+The software itself is split into a frontend (slack), and a whole mess
+of backends (slack-*).  The job of the frontend is to interpret command
+line options and orchestrate the various backends.  The backends are all
+separate executables, so if you wish you can replace them or invoke them
+in your own interesting ways.
+
+
+Options/config:
+
+Slack takes long options, like "--source".  Sometimes they have
+abbreviations, like "-s".  Each of the options can be specified in the
+config file by upcasing them and specifying KEY=value pairs.
+variables.  For example the command line:
+    slack --source /var/lib/slack-repository
+would become this line in slack.conf:
+    SOURCE=/var/lib/slack-repository
+and then you could just type "slack" on the command line.
+
+Repository:
+
+You probably want to put your repository in some sort of source control
+system (e.g. CVS).  slack doesn't actually require that, though.
+
+The repository is the thing specified by the SOURCE config option.
+slack tools in $SOURCE/roles/ for roles.  For example, it looks for the
+role "nss" (and all its subroles) in the directory $SOURCE/roles/nss
+
+The path of the ROLE_LIST file is relative to the repository.  So, if
+you do this:
+    ROLE_LIST=etc/roles.conf
+    SOURCE=/var/lib/slack-repository
+then slack-getroles will look at
+/var/lib/slack-repository/etc/roles.conf to get its role list.
+
+Role layout:
+
+Inside a role, you might have some files.  These are laid out in the
+"files" subdirectory of the role, laid out in a tree just like they will
+be installed on your host.  So, for example, if you have the file:
+    $SOURCE/roles/nss/files/etc/nsswitch.conf
+then the nss role will replace /etc/nsswitch.conf on your host with that
+file.
+
+You can also have scripts.  If you have a:
+    $SOURCE/roles/nss/scripts/postinstall
+it will get called after the files are installed.  You can also have a
+"preinstall."  Both are optional.  slack just tries to call exec()
+on them if they exist, so they can do whatever you want or be in any language
+you want (in other words, they don't need to be scripts, per se).
+
+There is a third script, "fixfiles", which will be called with a working
+directory of the files directory, so that you can chown or chmod or do other
+things to your files *before* they get installed.  Note that paths
+need to be relative to the files directory, then (slack isn't going to
+translate them for you, since that would be impossible to do reliably, nor is
+it going to chroot you, because then we'd have to import all the things you
+could want to do into the chroot).  So, for example, to chmod sudoers before
+installing:
+    #!/bin/sh
+    chmod 440 etc/sudoers 
+Normally, though, you shouldn't need fixfiles.
+
+Before executing the script, slack cleans out the environment.  It sets a
+default PATH and sets some env vars of its own (like SOURCE and ROOT and
+VERBOSE).  It also sets the umask to 077.  It does all this so that the
+operation of the script won't depend on the person running slack, so hopefully
+you won't have a case where something works for Alice but not for Bob.
+
+
+

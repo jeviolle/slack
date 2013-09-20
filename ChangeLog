@@ -1,0 +1,261 @@
+2008-04-20  Alan Sundell  <sundell@gmail.com>
+	* Version 0.15.2
+
+2008-04-18  Alan Sundell  <sundell@gmail.com>
+	* Makefile: fix 'dist' target to work with svn
+
+2008-03-02  Alan Sundell  <alan@sundell.net>
+	* Makefile: remove debian directory from tarball, to make Andrew
+	    Pollock happy; make a separate tarball for the (suggested) debian
+	    directory, to make me happy until his debian patch becomes
+	    available
+	* src/Slack.pm, test/01_module.t: apply Steve Atwell's get_system_exit
+	    patch.  This uses the POSIX macros for exit statues, makes the
+	    tests work on OpenBSD, and removes the bit that checks core dumps,
+	    since it was kind of silly and awkward to test, anyway.
+	* src/Makefile: another OpenBSD patch from Steve Atwell -- don't
+	    specify -p with -d when using install (doesn't make sense, anyway)
+
+2008-01-19  Alan Sundell  <alan@sundell.net>
+	* Version 0.15.1
+
+2008-01-18  Alan Sundell  <alan@sundell.net>
+	* Makefile: minor changes to 'dist' target
+	* src/slack-sync: use --files-from=- to do the whole sync at once. 
+	    On my systems for a 15-role sync this cuts the time from
+	    4-5 sec to 0.4-0.5 sec.
+	* test/*: unittest updates, change handling of temp dir
+	* Slack.pm: wrap_rsync() and wrap_rsync_fh() replace some duplicated
+	    code in the backends.
+	
+2008-01-14  Alan Sundell  <alan@sundell.net>
+	* Version 0.15.0
+	* src/Makefile: install slack.conf without the execute bit (thanks to
+	    Andrew Pollock)
+	* Makefile, debian/*: pull in a bunch of changes from Andrew Pollock's
+	    debian patch (perhaps to his frustration), with a few changes
+	    to preserve permissions on /var/lib/slack and /var/cache/slack;
+	    and a few of my own changes to the way debs are built.
+	* src/slack: Propagate --rsh to backends so the option actually works
+	    
+2008-01-12  Alan Sundell  <alan@sundell.net>
+	* Slack.pm, slack-sync, slack-getroles: patch to add --rsh/-e option
+	    from David Lowry.  This allows us to explicitly enable the
+	    behavior implied by a double colon in SOURCE.
+	* slack-stage: fix from Brian Brazil for a bug that occurs with
+	    files in a subrole that have the same size and timestamp as
+	    those in a parent role, such as can occur when the two files
+	    are checked into a repository at the same time.
+	* slack: add a --sleep option for a random sleep.  Useful in
+	    crontabs, where doing 'sleep $(($RANDOM % 3600)) && slack'
+	    can run you afoul of cron's treatment of '%'.
+	* Slack.pm: add a --version option
+	* slack.spec: integrate some minor changes from Gordon Messmer's
+	    patch (much already done by David Lowry's patch), most
+	    significantly adding username to buildroot
+
+2007-06-15  Alan Sundell  <alan@sundell.net>
+	* doc/slack.conf.5: describe the four forms of SOURCE
+
+2007-01-25  Alan Sundell  <alan@sundell.net>
+	* src/Makefile: mkdir /usr/bin to fix slack-diff install (thanks
+			to Robert Flemming and Chris Heiser)
+	* slack.spec: new, much-improved spec file from David Lowry
+
+2006-11-05  Alan Sundell  <alan@sundell.net>
+	* Version 0.14.1
+	* slack-getroles: remove --delete from rsync options (incompatible
+	    with newer versions [2.6.8] of rsync without -r); call
+	    check_system_exit() properly
+
+2006-10-12  Alan Sundell  <alan@sundell.net>
+	* Version 0.14.0
+	* slack.8: added missing and new options, and a section
+	    on preview modes
+	* slack: made --preview require a mode to avoid confusion of preview
+	    modes and role names; made 'prompt' preview mode run the
+	    preinstall/fixfiles scripts before showing file diff
+
+2006-09-25  Alan Sundell  <alan@sundell.net>
+	* slack-rolediff: renamed from slack-preview to avoid name conflict
+	* 08_diff.t: tests for slack-diff
+
+2006-09-21  Alan Sundell  <alan@sundell.net>
+	* COPYING, GPL, CREDITS: add license, attribution
+	* README: lots of new text about slack
+	* slack-installfiles: when creating ROOT, make it mode 0755
+
+2006-03-21  Alan Sundell  <alan@sundell.net>
+	* slack-diff: new diffing tool
+	* slack-preview: new slack backend for diffing tool
+	* slack-stage: allow specifying a subdir (files/script) to stage
+
+2005-10-30  Alan Sundell  <alan@sundell.net>
+	* slack.spec: expect slack.conf in sysconfdir (since that's where
+	    we install it)
+	* slack-installfiles: use program name when logging "Creating
+	    backup directory" message (like all other messages)
+
+2005-02-09  Alan Sundell  <alan@sundell.net>
+	* Version 0.13.2
+	* slack-installfiles: fail gracefully if no files to install
+
+2005-01-08  Alan Sundell  <alan@sundell.net>
+	* Version 0.13.1
+	* test: added tests for each of the backends
+	    * testsource: mockup roles for testing
+	    * test_util.pm: common functions, variables for testing
+	    * gen_config_file: generate config files with full paths
+			       for testing
+	* test: added tests for the frontend
+	* slack: call check_system_exit with full name (fixes undefined
+	    subroutine error when a backend failed)
+	* Slack.pm: say commands "exited" with their exit code,
+	    rather than "returned"
+	* slack-stage: in the base role, delete the destination if the
+	    source doesn't exist
+	* slack-sync: remove unused variable
+
+2005-01-05  Alan Sundell  <alan@sundell.net>
+	* slack-getroles: add a --remote-role-list option to force local sync
+	* slack-sync: we don't need File::Find anymore
+	* slack-runscript: mention when we skip a non-existant script
+	    if verbose is on.
+
+2005-01-04  Alan Sundell  <alan@sundell.net>
+	* added support for "make dist"
+	* slack-getroles: don't prepend source for paths to role-list
+	    beginning with './' (important for testing)
+	* Slack.pm: get_options(): generate default usage if no usage given
+		    get_options(): don't pass back the --quiet handler
+	* added support for "make test"
+	* test: added Slack.pm tests
+	* [Makefiles]: support a common set of install-* targets
+
+2004-12-22  Alan Sundell  <alan@sundell.net>
+	* Version 0.13
+	* slack,Slack.pm,slack-getroles: add a --hostname option,
+	    use that to select roles when provided.
+	* slack-runscript: export these options to the environment:
+		root, stage, hostname, verbose
+	* slack: add --no-sync option to skip syncing
+		 add --libexec-dir option for testing
+		 reclaim run_command() and rename it run_backend(),
+		    handle libexec dir in there.
+	* Slack.pm: fix handling of config file parsing verbosity
+	    back to previous behavior (broken in 0.12.2)
+	* src/Makefile: install Slack.pm mode 644
+
+2004-12-21  Alan Sundell  <alan@sundell.net>
+	* Version 0.12.2
+	* Slack.pm: A new common library
+	* [all]: Use new Slack.pm functions
+	* slack: allow --noscripts, --nofiles as --no-scripts, --no-files
+	* slack-getroles: fix broken handling of cache, source with
+	    respect to role-list
+
+2004-12-21  Alan Sundell  <alan@sundell.net>
+	* Version 0.12.1
+	* slack: refer to installfiles backend flags consistently --
+		 fixes bug introduced in 0.11 that broke backups
+
+2004-12-03  Alan Sundell  <alan@sundell.net>
+	* Version 0.12
+	* slack: run fixfiles just before installfiles and after preinstall
+	         so that preinstall can, e.g, create users
+
+2004-11-11  Alan Sundell  <alan@sundell.net>
+	* Version 0.11
+	* slack: store backend flags separately for each backend
+	* slack: support --no-scripts, --no-files, change -n to just
+		 mean both of those, rather than the pretty useless
+		 "don't do anything, not even refreshing the cache"
+	* [all]: Try to get some sensible output at verbosity level 2
+
+2004-10-29  Alan Sundell  <alan@sundell.net>
+
+	* Version 0.10.2
+	* [all]: use full role names in the stage directory, so there
+	    aren't collisions when multiple subroles are installed
+	* slack: call slack-sync once with all the roles
+	* slack-sync: only sync each base role once
+	* slack-stage: fix copy/paste variable misnomer
+
+2004-10-29  Alan Sundell  <alan@sundell.net>
+
+	* Version 0.10.1
+	* slack-stage: don't need --cvs-exclude
+	* [all]: get rid of $[ -- it just confuses people
+
+2004-10-22  Alan Sundell  <alan@sundell.net>
+
+	* Version 0.10
+	* version bump to deal with downstream version increments
+	* slack-getroles: allow roles list to be relative to source
+	* [all]: Add a new "staging" step
+	* slack-sync, slack-getroles: allow digits in hostnames everywhere
+		this time
+	* Makefile.common: add a /var/cache/slack for CACHE
+	* doc/slack.8: new manpage
+	* slack,slack-getroles: allow a --role-list argument
+
+2004-08-13  Alan Sundell  <alan@sundell.net>
+
+	* Version 0.7
+	* slack-getroles: allow digits in hostnames
+
+2004-07-18  Alan Sundell  <alan@sundell.net>
+
+	* Version 0.6
+	* slack-sync: reduce number of calls to rsync, made some
+	    exception handling more graceful and informative
+
+2004-07-17  Alan Sundell  <alan@sundell.net>
+
+	* Version 0.5
+	* require rsync 2.6.0
+	* slack-sync: dereference symlinks (--copy-links)
+
+2004-06-03  Alan Sundell  <alan@sundell.net>
+
+	* Version 0.4
+	* Changes to the way backups are handled
+	    * slack: choose a backup directory based on date
+	    * slack-sync,slack-getroles,slack-installfiles: use a --backup
+		and a --backup-dir option, like rsync
+	    * slack.conf: set BACKUP_DIR
+	    The current scheme is a little fragile and will probably change.
+
+	* Changes to verbosity:
+	    * slack: chop off one level of verbosity to modules
+	    * [modules]: bump verbosity thresholds down one
+
+	* slack-sync: transfer files with --perms, so when people make old
+	    files (non-)executable in the repository, the change will 
+	    propagate.
+
+	* slack-installfiles: mkdir $opt{root} in an eval
+
+
+2004-05-31  Alan Sundell  <alan@sundell.net>
+
+	* Version 0.3
+	* [all]: use sigtrap
+	* [modules]: be silent with just one -v
+		     redirect rsync's STDOUT to STDERR
+	* slack: propagate verbosity down to modules
+		 make level-1 verbosity less noisy, easier to read
+		 fix error-checking after system()
+	* slack-sync: check perms on $opt{cache}/roles (root:root 0700)
+
+2004-05-23  Alan Sundell  <alan@sundell.net>
+
+	* Version 0.2
+	* slack,slack-runscript: Renamed "fixperms" to "fixfiles".
+	* slack-sync: Fixed bug that would make installing a subrole
+		      install files from the subrole only, not its parent.
+	* slack.conf: Changed default master to rsyncd-over-ssh.
+
+2004-05-23  Alan Sundell  <alan@sundell.net>
+
+	* Initial Version (0.1)

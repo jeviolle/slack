@@ -1,0 +1,278 @@
+#!/usr/bin/perl -w
+# $Id: slack-stage 180 2008-01-19 08:26:19Z alan $
+# vim:sw=2
+# vim600:fdm=marker
+# Copyright (C) 2004-2008 Alan Sundell <alan@sundell.net>
+# All Rights Reserved.  This program comes with ABSOLUTELY NO WARRANTY.
+# See the file COPYING for details.
+#
+# This script is in charge of copying files from the local cache
+# directory to the local stage, building a unified single tree onstage
+# from the multiple trees that are the role + subroles in the cache
+
+require 5.006;
+use warnings FATAL => qw(all);
+use strict;
+use sigtrap qw(die untrapped normal-signals
+               stack-trace any error-signals);
+
+use File::Path;
+use File::Find;
+
+use constant LIB_DIR => '/usr/lib/slack';
+use lib LIB_DIR;
+use Slack;
+
+my @rsync = ('rsync',
+              '--recursive',
+              '--times',
+              '--ignore-times',
+              '--perms',
+              '--sparse',
+              );
+
+(my $PROG = $0) =~ s#.*/##;
+
+sub check_stage ();
+sub sync_role ($$@);
+sub apply_default_perms_to_role ($$);
+
+########################################
+# Environment
+# Helpful prefix to die messages
+$SIG{__DIE__} = sub { die "FATAL[$PROG]: @_"; };
+# Set a reasonable umask
+umask 077;
+# Get out of wherever (possibly NFS-mounted) we were
+chdir("/")
+  or die "Could not chdir /: $!";
+# Autoflush on STDERR
+select((select(STDERR), $|=1)[0]);
+
+########################################
+# Config and option parsing {{{
+my $usage = Slack::default_usage("$PROG [options] <role> [<role>...]");
+$usage .= <<EOF;
+
+  --subdir DIR
+      Sync this subdir only.  Possible values for DIR are 'files' and
+      'scripts'.
+EOF
+# Option defaults
+my %opt = ();
+Slack::get_options(
+  opthash => \%opt,
+  command_line_options => [
+    'subdir=s',
+  ],
+  usage => $usage,
+  required_options => [ qw(cache stage) ],
+);
+
+# Arguments are required
+die "No roles given!\n\n$usage" unless @ARGV;
+
+# We only allow certain values for this option
+if ($opt{subdir}) {
+  unless ($opt{subdir} eq 'files' or $opt{subdir} eq 'scripts') {
+    die "--subdir option must be 'files' or 'scripts'\n\n$usage";
+  }
+} else {
+  $opt{subdir} = '';
+}
+
+# Prepare for backups
+if ($opt{backup} and $opt{'backup-dir'}) {
+  # Make sure backup directory exists
+  unless (-d $opt{'backup-dir'}) {
+    ($opt{verbose} > 0) and print STDERR "Creating backup directory '$opt{'backup-dir'}'\n";
+    if (not $opt{'dry-run'}) {
+      eval { mkpath($opt{'backup-dir'}); };
+      die "Could not mkpath backup dir '$opt{'backup-dir'}': $@\n" if $@;
+    }
+  }
+  push(@rsync, "--backup", "--backup-dir=$opt{'backup-dir'}");
+}
+
+# Pass options along to rsync
+if ($opt{'dry-run'}) {
+  push @rsync, '--dry-run';
+}
+# Pass options along to rsync
+if ($opt{'verbose'} > 1) {
+  push @rsync, '--verbose';
+}
+# }}}
+
+# copy over the new files
+for my $full_role (@ARGV) {
+  # Split the full role (e.g. google.foogle.woogle) into components
+  my @role_parts = split(/\./, $full_role);
+  die "Internal error: Expect at least one role part" if not @role_parts;
+  # Reassemble parts one at a time onto @role and sync as we go,
+  # so we do "google", then "google.foogle", then "google.foogle.woogle"
+  my @role = ();
+  # Make sure we've got the right perms before we copy stuff down
+  check_stage();
+
+  # For the base role, do both files and scripts.
+  push @role, shift @role_parts;
+  for my $subdir(qw(files scripts)) {
+    if (not $opt{subdir} or $opt{subdir} eq $subdir) {
+      ($opt{verbose} > 1)
+        and print STDERR "$PROG: Calling sync_role for $full_role, @role\n";
+      # @role here will have one element, so sync_role will use --delete
+      sync_role($full_role, $subdir, @role)
+    }
+  }
+
+  # For all subroles, just do the files.
+  # (If we wanted script subroles to work like files, we'd get rid of this
+  # distinction and simplify the code.)
+  if (not $opt{subdir} or $opt{subdir} eq 'files') {
+    while (@role_parts) {
+      push @role, shift @role_parts;
+      ($opt{verbose} > 1)
+        and print STDERR "$PROG: Calling sync_role for $full_role, @role\n";
+      sync_role($full_role, 'files', @role);
+    }
+  }
+
+  for my $subdir (qw(files scripts)) {
+    apply_default_perms_to_role($full_role, $subdir)
+      if (not $opt{subdir} or $opt{subdir} eq $subdir);
+  }
+}
+exit 0;
+
+# Make sure the stage directory exists and is mode 0700, to protect files
+# underneath in transit
+sub check_stage () {
+  my $stage = $opt{stage} . "/roles";
+  if (not $opt{'dry-run'}) {
+    if (not -d $stage) {
+      ($opt{verbose} > 0) and print STDERR "$PROG: Creating '$stage'\n";
+        eval { mkpath($stage); };
+        die "Could not mkpath cache dir '$stage': $@\n" if $@;
+    }
+    ($opt{verbose} > 0) and print STDERR "$PROG: Checking perms on '$stage'\n";
+    if ($> != 0) {
+      warn "WARNING[$PROG]: Not superuser; unable to chown files\n";
+    } else {
+      chown(0, 0, $stage)
+        or die "Could not chown 0:0 '$stage': $!\n";
+    }
+    chmod(0700, $stage)
+      or die "Could not chmod 0700 '$stage': $!\n";
+  }
+}
+
+# Copy the files for a role from CACHE to STAGE
+sub sync_role ($$@) {
+  my ($full_role, $subdir, @role) = @_;
+  my @this_rsync = @rsync;
+
+  # If we were only given one role part, we're in the base role
+  my $in_base_role = (scalar @role == 1);
+
+  # For the base role, delete any files that don't exist in the cache.
+  # Not for the subrole (otherwise we'll delete all files not in
+  # the subrole, which may be most of them!)
+  if ($in_base_role) {
+    push @this_rsync, "--delete";
+  }
+
+  # (a)     => a/files 
+  # (a,b,c) => a/files.b.c
+  my $src_path = $role[0].'/'.join(".", $subdir, @role[1 .. $#role]);
+  # This one's a little simpler:
+  my $dst_path = $full_role.'/'.$subdir;
+
+  # final / is important for rsync
+  my $source = $opt{cache} . "/roles/" . $src_path . "/";
+  my $destination = $opt{stage} . "/roles/" . $dst_path . "/";
+  if (not -d $destination and -d $source) {
+      ($opt{verbose} > 0) and print STDERR "$PROG: Creating '$destination'\n";
+      if (not $opt{'dry-run'}) {
+        eval { mkpath($destination); };
+        die "Could not mkpath stage dir '$destination': $@\n" if $@;
+      }
+  }
+
+  # We no longer require the source to exist
+  if (not -d $source) {
+    # but we need to remove the destination if the source
+    # doesn't exist and we're in the base role
+    if ($in_base_role) {
+      rmtree($destination);
+      # rmtree() doesn't throw exceptions or give a return value useful
+      # for detecting failure, so we just check after the fact.
+      die "Could not rmtree '$destination' when '$source' missing\n"
+        if -e $destination;
+    }
+    # if we continue, rsync will fail because source is missing,
+    # so we don't.
+    return;
+  }
+
+  # All this to run an rsync command
+  my @command = (@this_rsync, $source, $destination);
+  ($opt{verbose} > 0) and print STDERR "$PROG: Syncing $src_path with '@command'\n";
+  Slack::wrap_rsync(@command);
+}
+
+# This just takes the base role, and chowns/chmods everything under it to
+# give it some sensible permissions.  Basically, the only thing we preserve
+# about the original permissions is the executable bit, since that's the
+# only thing source code controls systems like CVS, RCS, Perforce seem to
+# preserve.
+sub apply_default_perms_to_role ($$) {
+  my ($role, $subdir) = @_;
+  my $destination = $opt{stage} . "/roles/" . $role;
+
+  if ($subdir) {
+    $destination .= '/' . $subdir;
+  }
+
+  # If the destination doesn't exist, it's probably because the source didn't
+  return if not -d $destination;
+
+  ($opt{verbose} > 0) and print STDERR "$PROG: Setting default perms on $destination\n";
+  if ($> != 0) {
+    warn "WARNING[$PROG]: Not superuser; won't be able to chown files\n";
+  }
+  # Use File::Find to recurse the directory
+  find({
+      # The "wanted" subroutine is called for every directory entry
+      wanted => sub {
+        return if $opt{'dry-run'};
+        ($opt{verbose} > 2) and print STDERR "$File::Find::name\n";
+        if (-l) {
+          # symlinks shouldn't be in here,
+          #     since we dereference when copying
+          warn "WARNING[$PROG]: Skipping symlink at $File::Find::name: $!\n";
+          return;
+        } elsif (-f _) { # results of last stat saved in the "_"
+          if (-x _) {
+            chmod 0555, $_
+              or die "Could not chmod 0555 $File::Find::name: $!";
+          } else {
+            chmod 0444, $_
+              or die "Could not chmod 0444 $File::Find::name: $!";
+          }
+        } elsif (-d _) {
+          chmod 0755, $_
+            or die "Could not chmod 0755 $File::Find::name: $!";
+        } else {
+          warn "WARNING[$PROG]: Unknown file type at $File::Find::name: $!\n";
+        }
+        return if $> != 0; # skip chowning if not superuser
+        chown 0, 0, $_
+          or die "Could not chown 0:0 $File::Find::name: $!";
+      },
+      # end of wanted function
+    },
+    # way down here, we have the directory to traverse with File::Find
+    $destination,
+  );
+}

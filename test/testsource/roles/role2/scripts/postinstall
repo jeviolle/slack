@@ -1,0 +1,3 @@
+#!/bin/sh -e
+mkdir -p "$ROOT"/tmp
+touch "$ROOT"/tmp/postinstall

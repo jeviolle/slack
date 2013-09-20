@@ -1,0 +1,135 @@
+TODO: clean up this email into a more general doc.  In the meantime, though,
+here you go...
+
+Date: Mon, 30 Apr 2007 13:08:06 -0700
+From: Alan Sundell
+To: Marc MERLIN
+Subject: Re: Slack fixfiles question
+
+On Fri, Apr 27, 2007 at 07:19:22PM -0700, Marc MERLIN wrote:
+> Howdy,
+> 
+> I was reading
+> http://XXXX
+> in the hope of finding some details on whether fixfiles is allowed to
+> change directory perms in the hopes that slack-installfiles would them.
+> 
+> In our case, we have this:
+> opt/httpd               svn   svn-team  2775
+> opt/httpd/conf          svn   svn-team  2775
+> opt/httpd/conf/ssl.crt  svn   svn-team  2775
+> opt/httpd/conf/ssl.key  root  svn-team  2550
+> 
+> Our fixfiles does set all the perms right, as seen in 
+> /var/lib/slack/stage/roles/svn/files/opt/httpd/conf
+> but /usr/lib/slack/slack-installfiles takes a list of files to sync on
+> stdin and apparently that list doesn't contain the directories
+> themselves
+> 
+> It looks like for now we'll have to forget about fixfiles and just set
+> directory perms in postinstall
+> 
+> Correct?
+
+Yep.  fixfiles is mainly for files.
+
+Of course, it's not quite that simple.  Queue long explanation...
+
+> If so, would you take an RFE to improve fixfiles to also sync directory
+> perms?
+
+Basically, the problem is that slack lets you install files by just
+putting them in a tree, rather than also having to describe them in some
+meta-data config file (like rpm or bundle would, or like your table
+above).  You have to create all the parent directories in the tree, but
+slack has no idea what level of the parent directories you care about.
+In your case, for instance, you care about /opt/httpd, but not /opt --
+to slack, however, they are all just directories.
+
+Installfiles does make kind of an educated guess -- if it has to create
+a directory because it doesn't exist on the target, it has to pick some
+permissions for the new dir, so it just copies the permissions from the
+stage.  Otherwise, though, it leaves directories alone.  Naturally,
+then, this only affects things the first time on missing directories, so
+if you want to be idempotent or change existing dirs, you've got to
+throw it in one of the other scripts.
+
+
+
+For more on why this is, consider the example of an admin who wants to
+install /usr/local/sbin/somescript ...
+
+Inside the stage, slack will make directories have the default perms of
+0755 root:root.  But you have to ask yourself:  does the role author
+really want to change the perms on:
+  /
+  /usr
+  /usr/local
+  /usr/local/sbin
+to 755 root:root every time he installs this file?  Probably not.
+Probably, he just wants to install the file, and doesn't care what some
+other person has done to those dirs.
+
+On Debian, for instance, /usr/local looks like this:
+  drwxr-sr-x  11 root staff 1024 Jan 22 01:09 /usr/local
+
+Or, in some cases, a parent directory may be a symlink, and we wouldn't
+want to replace that with a directory (which is what rsync would do if
+we told it to sync that directory).
+
+And things get even worse if you have multiple roles fighting with each
+other.  If one role cared about the perms on /usr/local and the other
+didn't, which one would win, and for how long?  This type of conflict is
+more likely than a file conflict, since e.g. every role with files
+contains /.
+
+So, in general, the parent dirs on a machine may have all sorts of
+peculiar circumstanaces that you don't particularly care about, so one
+of the big features of slack is that it doesn't constantly muck with
+your parent dirs.
+
+That's why I rewrote my old system into slack in the first place after
+rsync introduced its --no-implied-dirs option.  The manpage for rsync
+talk about similar things in the discussion of that option.
+
+
+
+Obviously, other systems don't have this problem, if they have you
+explicitly document everything you care about and what permissions it
+has (like you did above), they can set the perms on the directory every
+time.  And, of course, they need to keep track of which roles care about
+which perms, so they can avoid conflicts, and... oh, no, we've
+re-invented a packaging system ;)
+
+slack, in exchange for your not having to have a metadata config in most
+cases, makes you handle this stuff in the pre- or postinstall.  I
+suppose you can look at the chmod/chown statements as a form of metadata
+config, but at least you don't need them most of the time, which suits
+slack's lazy attitude.
+
+
+
+One last thing: why do we treat files specially?  It's because they are
+special, in that they contain data.  And chmodding becomes most
+important when you want to protect something, like your SSL key.  You
+want to install that atomically with the right perms.  If you fixed the
+perms in postinstall, people could read your key in the interval.
+
+Directories, on the other hand, don't contain data -- they contain
+things that contain data.   Moreover, it's not really feasible to
+atomically install a whole directory plus its contents over an existing
+one (since you can't unlink dirs, you can't rename over them either).
+Even if you could do this, you'd have to deal with the stuff in the old
+dir you didn't want to mess with (so you'd have to use hard links, which
+probably means hard-linked subdirectories, which is another problem).
+
+So, the installation of an individual file we want to be atomic, so we
+provide a way of making sure that happens with the right perms, but the
+entire operation of installing the role can't be atomic, because the OS
+won't let us do that, so it's sufficient to use preinstall and
+postinstall to muck with directories, because we can't eliminate the
+race there.  If the OS ever gives us some kind of multiple-operation
+atomic transaction support for filesystems, then it'd make sense to
+think about dirs in fixfiles, because it would buy us something.
+
+--Alan

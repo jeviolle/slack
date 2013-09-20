@@ -1,0 +1,6 @@
+# template roles.conf file for testing
+# $Id: roles.conf.template 72 2005-01-09 01:40:49Z alan $
+__HOSTNAME__.com: badrole
+__HOSTNAME__: __ROLES__
+foo.__HOSTNAME__: badrole
+fixedhost.example.com: examplerole

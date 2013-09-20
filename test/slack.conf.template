@@ -1,0 +1,8 @@
+# template slack.conf file for testing
+# $Id: slack.conf.template 173 2008-01-19 05:55:04Z alan $
+SOURCE=__TEST_DIR__/testsource
+ROLE_LIST=__TEST_TMPDIR__/roles.conf
+CACHE=__TEST_TMPDIR__/cache
+STAGE=__TEST_TMPDIR__/stage
+ROOT=__TEST_TMPDIR__/root
+BACKUP_DIR=__TEST_TMPDIR__/backups

@@ -219,6 +219,23 @@ sub sync_role ($$@) {
   my @command = (@this_rsync, $source, $destination);
   ($opt{verbose} > 0) and print STDERR "$PROG: Syncing $src_path with '@command'\n";
   Slack::wrap_rsync(@command);
+
+  # record new files in a temporary role location - jeviolle
+  # this will be used in slack-installfiles and compared in postinstall
+  # for potential triggers
+  if ($destination =~ /\/files\/$/) {
+    unlink "$destination/../NEWFILES";
+    open(FH, ">", "$destination/../NEWFILES") || die "Failed to open $destination/../NEWFILES : $!\n";
+    chdir $destination;
+    find({
+      wanted => sub {
+        if (-f) {
+          unless ( -f "$opt{'root'}$File::Find::name" ) { print FH $File::Find::name; }
+        }
+      },
+    },'.'); 
+    close(FH);
+  }
 }
 
 # This just takes the base role, and chowns/chmods everything under it to

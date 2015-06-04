@@ -41,7 +41,7 @@ rm -rf %{buildroot}
 
 %files
 %defattr(644,root,root)
-%config %{_sysconfdir}/slack.conf
+%config(noreplace) %{_sysconfdir}/slack.conf
 %doc ChangeLog CREDITS COPYING README FAQ TODO doc/slack-intro
 %{_mandir}/man1/slack-diff.1.gz
 %{_mandir}/man5/slack.conf.5.gz
@@ -62,6 +62,10 @@ if [ $1 = 0 ] ; then
 fi
 
 %changelog
+* Thu Jun 4 2015 Rick Briganti <jeviolle@newaliases.org> 0.15.3-1
+- New upstream source (see ChangeLog).
+    slack.conf changed to noreplace
+
 * Sun Apr 20 2008 Alan Sundell <sundell@gmail.com> 0.15.2-1
 - New upstream source (see ChangeLog).
     packaging fixes

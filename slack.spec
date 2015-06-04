@@ -1,5 +1,5 @@
 Name:		slack
-Version:	0.15.2
+Version:	0.15.3
 Release:	1
 Summary:	slack configuration management tool
 Group:		System Environment/Libraries

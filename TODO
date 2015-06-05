@@ -5,10 +5,6 @@ reorganize TODO file :)
 #################
 Version 0.16:
     Break a bunch of stuff:
-    * change behavior of symlinks in SOURCE -- nobody likes the current
-      behavior, and rsyncd won't let it work as intended anyway.  Just copy
-      them down as symlinks, instead of trying to dereference them within the
-      repository.
     * don't test for -x on scripts, just -e (making non-executable scripts a
       fatal error, rather than skipping silently by what is usually a mistake)
     * get rid of implicit '-e ssh' with a double-colon in SOURCE.  Make people
@@ -18,6 +14,12 @@ Version 0.16:
 
 #################
 logging!
+
+add --rollback and tests to rolls?
+add --list-roles (store roles run externally)
+add --reporting
+add --lint (best practices check)
+add --show-deps?
 
 add --explicit-roles option that enables specifying roles on the command line
     but defaults to on.  but you can disable this in slack.conf if you want to
@@ -29,8 +31,6 @@ make slack-getroles use slack-sync, so only slack-sync needs to know about
 
 in rolediff, feed the files to slack-diff via stdin or something to speed
     things up.
-
-make slack.conf noreplace in slack.spec?
 
 in --preview=prompt, add a "skip" option to skip a particular role
 

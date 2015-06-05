@@ -223,9 +223,12 @@ sub sync_role ($$@) {
   # record new files in a temporary role location - jeviolle
   # this will be used in slack-installfiles and compared in postinstall
   # for potential triggers
-  if ($destination =~ /\/files\/$/) {
-    unlink "$destination/../NEWFILES";
-    open(FH, ">", "$destination/../NEWFILES") || die "Failed to open $destination/../NEWFILES : $!\n";
+  if ($destination =~ /\/files(\.)?\/$/) {
+    my $newfiles = "../NEWFILES";
+    if ($1) { $newfiles .= $1; }
+
+    unlink "$destination/$newfiles";
+    open(FH, ">", "$destination/$newfiles") || die "Failed to open $destination/$newfiles : $!\n";
     chdir $destination;
     find({
       wanted => sub {

@@ -18,6 +18,7 @@ use sigtrap qw(die untrapped normal-signals
 
 use File::Path;
 use File::Find;
+use File::stat;
 
 use constant LIB_DIR => '/usr/lib/slack';
 use lib LIB_DIR;
@@ -29,6 +30,7 @@ my @rsync = ('rsync',
               '--ignore-times',
               '--perms',
               '--sparse',
+              '--links', # copy symlinks as symlinks - jeviolle
               );
 
 (my $PROG = $0) =~ s#.*/##;
@@ -267,11 +269,8 @@ sub apply_default_perms_to_role ($$) {
       wanted => sub {
         return if $opt{'dry-run'};
         ($opt{verbose} > 2) and print STDERR "$File::Find::name\n";
-        if (-l) {
-          # symlinks shouldn't be in here,
-          #     since we dereference when copying
-          warn "WARNING[$PROG]: Skipping symlink at $File::Find::name: $!\n";
-          return;
+        if (-l _) {
+          warn "WARNING[$PROG]: Ignoring chmod for symlink $File::Find::name\n";
         } elsif (-f _) { # results of last stat saved in the "_"
           if (-x _) {
             chmod 0555, $_

@@ -24,7 +24,7 @@ use Slack;
 my @rsync = ('rsync',
               '--cvs-exclude',
               '--recursive',
-              '--copy-links',
+              '--links', # copy symlinks as symlinks - jeviolle
               '--times',
               '--perms',
               '--sparse',

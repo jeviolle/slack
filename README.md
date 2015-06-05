@@ -8,5 +8,7 @@
   perform configuration management/deployment using their
   existing skills and knowledge.
 
+  [See the wiki for more information](https://github.com/jeviolle/slack/wiki)
+
   [Original source](http://www.sundell.net/~alan/projects/slack/)
 

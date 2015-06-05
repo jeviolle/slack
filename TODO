@@ -5,8 +5,6 @@ reorganize TODO file :)
 #################
 Version 0.16:
     Break a bunch of stuff:
-    * don't test for -x on scripts, just -e (making non-executable scripts a
-      fatal error, rather than skipping silently by what is usually a mistake)
     * get rid of implicit '-e ssh' with a double-colon in SOURCE.  Make people
       use --rsh explicitly (maybe add a warning first?)
     * replace --cvs-exclude in slack-sync with a better exclude list
@@ -15,6 +13,7 @@ Version 0.16:
 #################
 logging!
 
+add --remove/uninstall of roll to clean up
 add --rollback and tests to rolls?
 add --list-roles (store roles run externally)
 add --reporting

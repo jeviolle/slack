@@ -16,6 +16,7 @@ use sigtrap qw(die untrapped normal-signals
 
 use File::Path;
 use File::Find;
+use File::stat;
 
 use constant LIB_DIR => '/usr/lib/slack';
 use lib LIB_DIR;
@@ -72,15 +73,27 @@ $ENV{VERBOSE}-- if $ENV{VERBOSE};
 # Run the script for each role given, if it exists and is executable
 for my $role (@ARGV) {
   my $script_to_run = "$opt{stage}/roles/$role/scripts/$action";
-  unless (-x $script_to_run) {
-    if (-e _) {
-      # A helpful warning
-      warn "WARNING[$PROG]: Skipping '$script_to_run' because it's not executable\n";
-    } elsif ($opt{verbose} > 0) {
+  my $original_mode;
+
+  # skip $action that doesn't exist
+  unless (-e $script_to_run) {
+    if ($opt{'verbose'} > 0) {
       print STDERR "$PROG: Skipping '$script_to_run' because it doesn't exist\n";
     }
     next;
   }
+ 
+  # make it executable to avoid unwanted/incomplete status - jeviolle
+  # users should rename the script to not match the $action
+  unless (-x $script_to_run) {
+    # A helpful warning
+    warn "WARNING[$PROG]: Making '$script_to_run' executable  because it's not executable\n";
+    my $sb = stat($script_to_run);
+    $original_mode = sprintf("%04o",$sb->mode & 07777);
+    chmod 0750, $script_to_run
+      or die "Failed to chmod 0750 $script_to_run : $!\n";
+  }
+
   my $dir;
   if ($action eq 'fixfiles') {
     $dir = "$opt{stage}/roles/$role/files";
@@ -104,6 +117,13 @@ for my $role (@ARGV) {
       Slack::check_system_exit(@command);
     }
   }
+
+  # attempt reset the $script_to_run mode
+  if (defined($original_mode)) {
+    chmod oct($original_mode), $script_to_run
+      or warn "WARNING[$PROG]: Failed to reset mode of $script_to_run to $original_mode: $!\n";
+  }
+
   chdir('/')
     or die "Could not chdir '/': $!\n"
 }

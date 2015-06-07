@@ -144,7 +144,7 @@ $ENV{PERL5LIB} = $srcdir;
   my $output;
   $output = `../src/slack --libexec-dir=$srcdir -C $test_config_file role1 2>&1`;
   # this checks for lines that aren't complaining about not being superuser
-  unlike($output, qr/^(?!WARNING\[\S+\]: Not superuser)/m, "no -v quiet");
+  unlike($output, qr/^WARNING\[\S+\]: Not superuser/m, "no -v quiet");
 
   $output = `../src/slack --libexec-dir=$srcdir -C $test_config_file -v role1 2>&1`;
   unlike($output, qr/^slack-\w+:/m, "one -v not propagated");

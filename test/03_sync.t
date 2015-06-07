@@ -8,7 +8,7 @@ import test_util qw(gen_wanted);
 
 use File::Find;
 
-plan tests => 15 + scalar @test_roles;
+plan tests => 13 + scalar @test_roles;
 
 # For the scripts we will run
 $ENV{PERL5LIB} = '../src';
@@ -52,7 +52,7 @@ $ENV{PERL5LIB} = '../src';
         is_deeply($cache_files, $source_files, "file deletion file list compare");
     }
 
-    # OK, now try out a symlink -- we expect these to be dereferenced by slack-sync
+    # OK, now try out a symlink -- we expect these to not be dereferenced by slack-sync
     {
         my $symlink_dir = "files/etc";
         my $symlink = "$symlink_dir/symlink";
@@ -66,12 +66,8 @@ $ENV{PERL5LIB} = '../src';
         my $return = system("../src/slack-sync -C $test_config_file role1 2> /dev/null");
         ok(($return == 0 and $? == 0), "symlink sync return");
 
-        ok((!-l "$cache/$symlink"), "cached copy of symlink not a symlink");
-        ok((-f "$cache/$symlink"), "cached copy of symlink is a file");
+        ok((-l "$cache/$symlink"), "cached copy of symlink is a symlink");
         
-        system("cmp $source/$full_target $cache/$symlink >/dev/null 2>&1");
-        is($?, 0, "dereferenced symlink contents identical to target file");
-
         unlink("$source/$symlink")
             or die "couldn't unlink symlink after testing";
         unlink("$cache/$symlink");

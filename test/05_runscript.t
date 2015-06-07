@@ -88,10 +88,9 @@ EOF
     is($?, 0, "succeed when script missing");
 }
 
-# don't run non-executable files
 {
     my $output = get_script_output('not_executable', $role);
-    is($output, '', "skip when script non-executable");
+    is($output, '', "run when script non-executable");
     is($?, 0, "succeed when non-executable");
 }
 

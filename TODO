@@ -15,7 +15,6 @@ logging!
 
 add --remove/uninstall of roll to clean up
 add --rollback and tests to rolls?
-add --list-roles (store roles run externally)
 add --reporting
 add --lint (best practices check)
 add --show-deps?

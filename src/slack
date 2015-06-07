@@ -71,6 +71,9 @@ $usage .= <<EOF;
   --role-list
       Role list for slack-getroles
 
+  --list-roles
+      Lists the assigned roles 
+
   --libexec-dir DIR
       Look for backend scripts in this directory.
 
@@ -94,6 +97,7 @@ Slack::get_options(
   command_line_options => [
     'preview=s',
     'role-list=s',
+    'list-roles',
     'no-scripts|noscripts',
     'no-files|nofiles',
     'no-sync|nosync',
@@ -214,6 +218,13 @@ if (not @ARGV) {
 }
 # }}}
 
+# print roles and exit
+if ($opt{'list-roles'}) {
+  foreach (@roles) {
+    print "$_\n"; 
+  }
+  exit 0;
+}
 
 # remove excluded roles from the list
 if ($opt{'exclude'}) {

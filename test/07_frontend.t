@@ -2,7 +2,7 @@
 
 use strict;
 use warnings FATAL => qw(all);
-use Test::More tests => 13;
+use Test::More tests => 14;
 use test_util;
 import test_util qw(gen_wanted);
 
@@ -53,6 +53,16 @@ $ENV{PERL5LIB} = $srcdir;
   find({wanted => gen_wanted($root, $root_files)},
       $root);
   is_deeply($root_files, $source_files, "slack file list compare");
+}
+
+# test --exclude by excluding all roles
+{
+  my $root = $test_config{root};
+  rmtree($root);
+  die "Could not remove root before testing" if -e $root;
+
+  my $return = system("../src/slack --libexec-dir=$srcdir -C $test_config_file --exclude role1,role2.sub,role3.sub.sub > /dev/null 2>&1");
+  isnt(($return == 0 and $? == 0), "slack --exclude return");
 }
 
 # Next, let's try role2 with no scripts

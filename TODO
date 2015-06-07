@@ -31,7 +31,7 @@ make slack-getroles use slack-sync, so only slack-sync needs to know about
 in rolediff, feed the files to slack-diff via stdin or something to speed
     things up.
 
-in --preview=prompt, add a "skip" option to skip a particular role
+in --preview=prompt, add per file skip instead of files and/or scripts (requires modifications to rolediff)
 
 fully support alternate diff programs (temp files or fds for modes with
     filename and attribute in the text; honor DIFF env var or something)

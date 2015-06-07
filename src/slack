@@ -80,6 +80,9 @@ $usage .= <<EOF;
   --sleep TIME
       Randomly sleep between 1 and TIME seconds before starting
       operations
+
+  --exclude role1,role2
+      Excludes the CSV list of roles from processing
 EOF
 
 # Options
@@ -97,6 +100,7 @@ Slack::get_options(
     'libexec-dir=s',
     'diff=s',
     'sleep=i',
+    'exclude=s',
   ],
   required_options => [ qw(source cache stage root) ],
   command_line_hash => \%command_line_opt,
@@ -210,6 +214,17 @@ if (not @ARGV) {
 }
 # }}}
 
+
+# remove excluded roles from the list
+if ($opt{'exclude'}) {
+  my %role_list = map{$_ => 1} @roles;
+  foreach (split(',', $opt{'exclude'})) {
+    delete $role_list{$_};
+  }
+
+  @roles = map{$_} keys %role_list;
+}
+
 # Check role name syntax {{{
 for my $role (@roles) {
   # Roles MUST begin with a letter.  All else is reserved.
@@ -233,6 +248,11 @@ ROLE: for my $role (@roles) {
   $opt{verbose} and print STDERR "$PROG: stage files $role\n";
   run_backend('slack-stage',
     @{$backend_flags{stage}}, '--subdir=files', $role);
+
+  # disable skipping of scripts and files unless selected
+  # from run_conditional_backend
+  my $skip_scripts = 0;
+  my $skip_files = 0;
   
   if ($opt{preview}) {
     if ($opt{preview} eq 'simple') {
@@ -246,7 +266,7 @@ ROLE: for my $role (@roles) {
       $opt{verbose} and print STDERR "$PROG: preview scripts $role\n";
       # Here, we want to prompt and just do the scripts, since
       # we need to run preinstall and fixfiles before doing the files.
-      run_conditional_backend(1, 'slack-rolediff',
+      $skip_scripts = run_conditional_backend(1, 'slack-rolediff',
         @{$backend_flags{preview}}, '--subdir=scripts', $role);
     } else {
       # Should get caught in option processing, above
@@ -254,26 +274,32 @@ ROLE: for my $role (@roles) {
     }
   }
 
-  $opt{verbose} and print STDERR "$PROG: stage scripts $role\n";
-  run_backend('slack-stage',
-    @{$backend_flags{stage}}, '--subdir=scripts', $role);
+  # do not run if skip_scripts is true
+  unless ($skip_scripts) {
+    $opt{verbose} and print STDERR "$PROG: stage scripts $role\n";
+    run_backend('slack-stage',
+      @{$backend_flags{stage}}, '--subdir=scripts', $role);
 
-  # preinstall
-  $opt{verbose} and print STDERR "$PROG: preinstall $role\n";
-  run_backend('slack-runscript',
-    @{$backend_flags{preinstall}}, 'preinstall', $role);
+    # preinstall
+    $opt{verbose} and print STDERR "$PROG: preinstall $role\n";
+    run_backend('slack-runscript',
+      @{$backend_flags{preinstall}}, 'preinstall', $role);
 
-  # fixfiles
-  $opt{verbose} and print STDERR "$PROG: fixfiles $role\n";
-  run_backend('slack-runscript',
-    @{$backend_flags{fixfiles}}, 'fixfiles', $role);
+    # fixfiles
+    $opt{verbose} and print STDERR "$PROG: fixfiles $role\n";
+    run_backend('slack-runscript',
+      @{$backend_flags{fixfiles}}, 'fixfiles', $role);
+  }
 
   # preview files
   if ($opt{preview} and $opt{preview} eq 'prompt') {
       $opt{verbose} and print STDERR "$PROG: preview files $role\n";
-      run_conditional_backend(1, 'slack-rolediff',
+      $skip_files = run_conditional_backend(1, 'slack-rolediff',
         @{$backend_flags{preview}}, '--subdir=files', $role);
   }
+
+  # do not continue if skip_files is true and go to next role
+  next ROLE if ($skip_files);
 
   # installfiles
   $opt{verbose} and print STDERR "$PROG: install $role\n";
@@ -319,7 +345,14 @@ sub run_conditional_backend ($@) {
       # exit 1 means a difference found or something normal that requires
       # a prompt before continuing.
       if ($prompt) {
-        exit 1 unless Slack::prompt("Continue? [yN] ") eq 'y';
+        my $answer = Slack::prompt("\n1. No (Default)\n2. Yes\n3. Skip\n\nChoice: [1/2/3] " ); 
+        if ( $answer eq "2" ) {
+          return 0;
+        } elsif  ( $answer eq "3" ) {
+          return 1;
+        } else {
+          exit 1;
+        }
       }
     } else {
       # any other non-successful exit is a serious error.

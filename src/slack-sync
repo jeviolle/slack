@@ -62,7 +62,7 @@ Slack::get_options(
 );
 
 # Arguments are required
-die "No roles given!\n\n$usage" unless @ARGV;
+die "No roles given! Or you have excluded all the roles for this host!\n\n$usage" unless @ARGV;
 
 # Prepare for backups
 if ($opt{backup} and $opt{'backup-dir'}) {

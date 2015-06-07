@@ -277,6 +277,8 @@ sub prompt ($) {
     $term = new Term::ReadLine 'slack'
   }
 
+  # disable underline
+  $term->ornaments(0);
   $term->readline($prompt);
 }
 

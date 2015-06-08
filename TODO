@@ -1,76 +1,55 @@
-# $Id: TODO 184 2008-03-03 01:54:09Z alan $
+# TODO
+#
+# this is a very long (unprioritized list of things that might be nice to have)
+# 
 
-reorganize TODO file :)
-
-#################
-Version 0.16:
-    Break a bunch of stuff:
-    * get rid of implicit '-e ssh' with a double-colon in SOURCE.  Make people
-      use --rsh explicitly (maybe add a warning first?)
-    * replace --cvs-exclude in slack-sync with a better exclude list
-      [so people can, against my advice :), install .so files and such]
-
-#################
-logging!
-
-add --remove/uninstall of roll to clean up
-add --rollback and tests to rolls?
-add --reporting
-add --lint (best practices check)
-add --show-deps?
-
-add --explicit-roles option that enables specifying roles on the command line
+- Break a bunch of stuff:
+  * get rid of implicit '-e ssh' with a double-colon in SOURCE.  Make people
+    use --rsh explicitly (maybe add a warning first?)
+- logging!
+- add RMFILES to compliment NEWFILES for diff?
+- add --remove/uninstall of roll to clean up
+- add --rollback and tests to rolls?
+- add --reporting
+- add --lint (best practices check)
+- add --show-deps?
+- add --explicit-roles option that enables specifying roles on the command line
     but defaults to on.  but you can disable this in slack.conf if you want to
     avoid admin errors.
-
-make slack-getroles use slack-sync, so only slack-sync needs to know about
+- make slack-getroles use slack-sync, so only slack-sync needs to know about
     how to get stuff from source, and we can more easily add support
     for other roles sources
-
-in rolediff, feed the files to slack-diff via stdin or something to speed
+- in rolediff, feed the files to slack-diff via stdin or something to speed
     things up.
-
-in --preview=prompt, add per file skip instead of files and/or scripts (requires modifications to rolediff)
-
-fully support alternate diff programs (temp files or fds for modes with
+- in --preview=prompt, add per file skip instead of files and/or scripts (requires modifications to rolediff)
+- fully support alternate diff programs (temp files or fds for modes with
     filename and attribute in the text; honor DIFF env var or something)
-
-Slack.pm: in find_files_to_install(), probably better to hand the callback a
+- Slack.pm: in find_files_to_install(), probably better to hand the callback a
     relative path (sub out ^$source/).
-
-make run_backend() do the printing to stderr and dereferencing backend flags
-
-make slack-getroles work for non-superusers (by caching the role list in /tmp
+- make run_backend() do the printing to stderr and dereferencing backend flags
+- make slack-getroles work for non-superusers (by caching the role list in /tmp
     or something)
-
-write unit tests for slack-stage changes (--subdir support)
-more unit tests for slack-diff
+- write unit tests for slack-stage changes (--subdir support)
+- more unit tests for slack-diff
     we can use fakeroot if avail and skip some tests if non-root
-
-manpage update:
+- manpage update:
     describe order of operations
-
-add functionality to check manually-supplied role list against list in
+- add functionality to check manually-supplied role list against list in
     slack-getroles, with option to override
-just skip syncing if source equals cache.
-use an "install" script, if present, instead of built-in
+- just skip syncing if source equals cache.
+- use an "install" script, if present, instead of built-in
     file install routines
-export dry-run, backup, backup-dir if they exist
-support preview
+- export dry-run, backup, backup-dir if they exist
+- support preview
     add a flag to run script in preview with a dry-run flag or env
-function library for shell scripts
-in RPM, deb, create subdirs of CACHE
-
-
-a push script to read roles.conf and push a role to all servers running it
-
-defaults for slack.conf in Slack.pm or somewhere?  (so people don't have to
-keep patching as new variables are introduced...)
-
-#################
-
-PRE-1.0:
-* Figure out some better way to handle backup options:
+- function library for shell scripts
+- update url in rpm spec
+- create deb package
+- in RPM, deb, create subdirs of CACHE
+- a push script to read roles.conf and push a role to all servers running it
+- defaults for slack.conf in Slack.pm or somewhere?  (so people don't have to
+    keep patching as new variables are introduced...)
+- Figure out some better way to handle backup options:
     - by default, we want admins to just specify the base backup dir in config,
       and we can add the time-based subdir to it
     - we generally want only installfiles to do backups (given the existence
@@ -85,33 +64,26 @@ PRE-1.0:
         or warning purposes).  Probably we'll have to install them all
         at once, since we don't know what other files in the scripts/
         directory they may use.
-
-* Nagging
+- Nagging
     - we want to be able to nag admins about files they have not yet installed
         or scripts they have not yet run
-
-* separate slack-runscript, slack-runfixfiles
-* allow ./configure to set paths
-* manpages for slack, slack-backends
-* record what roles have been installed
---------
-LATER:
-
-* build in support for heterogenous underlying distros, like subsets have
+- separate slack-runscript, slack-runfixfiles
+- allow ./configure to set paths
+- manpages for slack, slack-backends
+- record what roles have been installed
+- build in support for heterogenous underlying distros, like subsets have
   (maybe just using subroles)
-
-* Nagging email about pending changes
-* Use backup functionality to store original versions of files,
+- Nagging email about pending changes
+- Use backup functionality to store original versions of files,
   so we can uninstall
-* Use backups to store intermediate versions of files for rollbacks
-* Make a helper that uses tripwire or AIDE to find files that
+- Use backups to store intermediate versions of files for rollbacks
+- Make a helper that uses tripwire or AIDE to find files that
   have been modified and upload them to repository, so people
   can be *really* lazy.
-* Locking to prevent concurrent writes
-
-* something like rpm -ql, -qf to show/query files in a role (just from files
+- Locking to prevent concurrent writes
+- something like rpm -ql, -qf to show/query files in a role (just from files
     dir)
-* use a tarball as a source (possibly fetched with wget)
-* support http urls (with wget), both as raw dir trees and as tar.gz files
-* use rsync+ssh to mean rsync -e ssh (like svn)
-* maybe split the getting stuff in sync/getroles from the syncing stuff in stage, so we can have a common backend for various URLs
+- use a tarball as a source (possibly fetched with wget)
+- support http urls (with wget), both as raw dir trees and as tar.gz files
+- use rsync+ssh to mean rsync -e ssh (like svn)
+- maybe split the getting stuff in sync/getroles from the syncing stuff in stage, so we can have a common backend for various URLs

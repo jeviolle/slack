@@ -22,7 +22,7 @@ use lib LIB_DIR;
 use Slack;
 
 my @rsync = ('rsync',
-              '--cvs-exclude',
+              '--exclude-from=/etc/slack/slackignore', # default global ignore list
               '--recursive',
               '--links', # copy symlinks as symlinks - jeviolle
               '--times',

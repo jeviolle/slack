@@ -89,10 +89,12 @@ sub gen_wanted ($$) {
         # Suppress spurious warning about the # and , characters below
         no warnings;
         # Straight out of the rsync manpage section for --cvs-exclude
+        # which is now in /etc/slack/slackignore to allow customization
         @cvs_exclude = qw(
           RCS  SCCS  CVS  CVS.adm  RCSLOG  cvslog.*  tags TAGS .make.state
           .nse_depinfo *~ #* .#* ,* _$* *$ *.old *.bak *.BAK *.orig  *.rej
           .del-* *.a *.olb *.o *.obj *.so *.exe *.Z *.elc *.ln core .svn/
+          .git/ .hg/ .bzr/
         );
     }
     @cvs_exclude = map {glob_to_regex($_)} @cvs_exclude;

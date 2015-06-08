@@ -19,7 +19,7 @@ $VERSION = '0.15.2';
 @EXPORT    = qw();
 @EXPORT_OK = qw();
 
-$DEFAULT_CONFIG_FILE = '/etc/slack.conf';
+$DEFAULT_CONFIG_FILE = '/etc/slack/slack.conf';
 
 my $term;
 

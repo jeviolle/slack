@@ -3,9 +3,6 @@
 # this is a very long (unprioritized list of things that might be nice to have)
 # 
 
-- Break a bunch of stuff:
-  * get rid of implicit '-e ssh' with a double-colon in SOURCE.  Make people
-    use --rsh explicitly (maybe add a warning first?)
 - logging!
 - add RMFILES to compliment NEWFILES for diff?
 - add --remove/uninstall of roll to clean up

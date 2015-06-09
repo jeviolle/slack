@@ -1,0 +1,41 @@
+#
+# This is the default and matches --cvs-exclude from linux,
+# customize away. By default this will be added if missing
+# and you can modify with fixfiles
+#
+RCS
+SCCS
+CVS
+CVS.adm
+RCSLOG
+cvslog.*
+tags
+TAGS
+.make.state
+.nse_depinfo
+*~
+#*
+.#*
+,*
+_$*
+*$
+*.old
+*.bak
+*.BAK
+*.orig
+*.rej
+.del-*
+*.a
+*.olb
+*.o
+*.obj
+*.so
+*.exe
+*.Z
+*.elc
+*.ln
+core
+.svn/
+.git/
+.hg/
+.bzr/

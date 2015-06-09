@@ -122,12 +122,14 @@ can_ok("Slack", qw(default_usage read_config get_system_exit check_system_exit g
     eval {
         local @ARGV = (
             "--config=$test_config_file",
+            "--ignore=$test_ignore_file",
         );
         $opt = Slack::get_options();
     };
     is($@, '', "get_options exception ".$e++);
     # A few extra things should be set
     local $test_config{config} = $test_config_file;
+    local $test_config{ignore} = $test_ignore_file;
     local $test_config{hostname} = $hostname;
 
     is_deeply($opt, \%test_config, "get_options config keys");

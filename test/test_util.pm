@@ -13,9 +13,9 @@ use Sys::Hostname;
     @EXPORT = ();
     @EXPORT_OK = qw(gen_config_file gen_wanted write_to_file);
 }
-use vars qw($test_config_file %test_config @test_roles $test_hostname);
+use vars qw($test_config_file $test_ignore_file %test_config @test_roles $test_hostname);
 use vars qw($TEST_TMPDIR);
-push @EXPORT, qw($test_config_file %test_config @test_roles $test_hostname);
+push @EXPORT, qw($test_config_file $test_ignore_file %test_config @test_roles $test_hostname);
 
 # Because all the scripts chdir('/'), we need to know the cwd for our configs
 my $TEST_DIR = getcwd;
@@ -23,6 +23,7 @@ $TEST_TMPDIR = $ENV{TEST_TMPDIR};
 $test_hostname = hostname;
  
 $test_config_file = "$TEST_TMPDIR/slack.conf";
+$test_ignore_file = "$TEST_TMPDIR/slackignore";
 %test_config = (
     'source' => "$TEST_DIR/testsource",
     'role-list' => "$TEST_TMPDIR/roles.conf",

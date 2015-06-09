@@ -41,7 +41,8 @@ rm -rf %{buildroot}
 
 %files
 %defattr(644,root,root)
-%config(noreplace) %{_sysconfdir}/slack.conf
+%config(noreplace) %{_sysconfdir}/slack/slack.conf
+%config(noreplace) %{_sysconfdir}/slack/slackignore
 %doc ChangeLog CREDITS COPYING README FAQ TODO doc/slack-intro
 %{_mandir}/man1/slack-diff.1.gz
 %{_mandir}/man5/slack.conf.5.gz
@@ -56,12 +57,16 @@ rm -rf %{buildroot}
 
 %preun
 if [ $1 = 0 ] ; then
-    . /etc/slack.conf
+    . /etc/slack/slack.conf
     rm -rf "$CACHE"/*
     rm -rf "$STAGE"
 fi
 
 %changelog
+* Tue Jan 9 2015 Rick Briganti <jeviolle@newaliases.org> 0.15.3-2
+- Updated slack.conf location to /etc/slack
+- Added slackignore
+
 * Thu Jun 4 2015 Rick Briganti <jeviolle@newaliases.org> 0.15.3-1
 - New upstream source (see ChangeLog).
     slack.conf changed to noreplace

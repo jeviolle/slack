@@ -14,12 +14,13 @@ use File::Find;
 use POSIX qw(WIFEXITED WEXITSTATUS WIFSIGNALED WTERMSIG);
 
 use base qw(Exporter);
-use vars qw($VERSION @EXPORT @EXPORT_OK $DEFAULT_CONFIG_FILE);
-$VERSION = '0.15.2';
+use vars qw($VERSION @EXPORT @EXPORT_OK $DEFAULT_CONFIG_FILE $DEFAULT_IGNORE_FILE);
+$VERSION = '0.15.3';
 @EXPORT    = qw();
 @EXPORT_OK = qw();
 
 $DEFAULT_CONFIG_FILE = '/etc/slack/slack.conf';
+$DEFAULT_IGNORE_FILE = '/etc/slack/slackignore';
 
 my $term;
 
@@ -29,6 +30,7 @@ my @default_options = (
     'verbose|v+',
     'quiet',
     'config|C=s',
+    'ignore|I=s',
     'source|s=s',
     'rsh|e=s',
     'cache|c=s',
@@ -60,6 +62,9 @@ Options:
 
   -C, --config  FILE
       Use this config file instead of '$DEFAULT_CONFIG_FILE'.
+
+  -I, --ignore FILE
+      Use this slackignore file instead of '$DEFAULT_IGNORE_FILE'.
 
   -s, --source  DIR
       Source for slack files
@@ -231,6 +236,11 @@ sub get_options {
   # Use the default config file
   if (not defined $arg{opthash}->{config}) {
     $arg{opthash}->{config} = $DEFAULT_CONFIG_FILE;
+  }
+
+  # Use the default ignore file
+  if (not defined $arg{opthash}->{ignore}) {
+    $arg{opthash}->{ignore} = $DEFAULT_IGNORE_FILE;
   }
 
   # We need to decide whether to be verbose about reading the config file

@@ -20,7 +20,7 @@ $ENV{PERL5LIB} = '../src';
 
     # Make sure that after sync, we have the same files in cache as in source
     {
-        my $return = system("../src/slack-sync -C $test_config_file role1 2>/dev/null");
+        my $return = system("../src/slack-sync -I $test_ignore_file -C $test_config_file role1 2>/dev/null");
         ok(($return == 0 and $? == 0), "role1 sync return");
 
         ok((-d $cache), "role1 cache dir created");
@@ -39,7 +39,7 @@ $ENV{PERL5LIB} = '../src';
         (system("touch $badfile") == 0)
             or die "failed creating bad file for deletion test";
 
-        my $return = system("../src/slack-sync -C $test_config_file role1 2> /dev/null");
+        my $return = system("../src/slack-sync -I $test_ignore_file -C $test_config_file role1 2> /dev/null");
         ok(($return == 0 and $? == 0), "file deletion sync return");
 
         ok((!-e $badfile), "file deletion");
@@ -63,7 +63,7 @@ $ENV{PERL5LIB} = '../src';
         symlink($target, "$source/$symlink")
             or die "couldn't make symlink for testing: $!";
 
-        my $return = system("../src/slack-sync -C $test_config_file role1 2> /dev/null");
+        my $return = system("../src/slack-sync -I $test_ignore_file -C $test_config_file role1 2> /dev/null");
         ok(($return == 0 and $? == 0), "symlink sync return");
 
         ok((-l "$cache/$symlink"), "cached copy of symlink is a symlink");
@@ -79,7 +79,7 @@ $ENV{PERL5LIB} = '../src';
     my $cache = $test_config{cache}."/roles/role2";
     my $source = $test_config{source}."/roles/role2";
 
-    my $return = system("../src/slack-sync -C $test_config_file role2.sub 2> /dev/null");
+    my $return = system("../src/slack-sync -I $test_ignore_file -C $test_config_file role2.sub 2> /dev/null");
     ok(($return == 0 and $? == 0), "role2.sub sync return");
 
     ok((-d $cache), "role2 cache dir created");
@@ -95,7 +95,7 @@ $ENV{PERL5LIB} = '../src';
 
 # Now check that using multiple roles works
 {
-    my $return = system("../src/slack-sync -C $test_config_file @test_roles 2> /dev/null");
+    my $return = system("../src/slack-sync -I $test_ignore_file -C $test_config_file @test_roles 2> /dev/null");
     ok(($return == 0 and $? == 0), "multi-role sync return");
 
     # Compare the lists of files in the two directories

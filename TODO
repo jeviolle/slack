@@ -10,9 +10,6 @@
 - add --reporting
 - add --lint (best practices check)
 - add --show-deps?
-- add --explicit-roles option that enables specifying roles on the command line
-    but defaults to on.  but you can disable this in slack.conf if you want to
-    avoid admin errors.
 - make slack-getroles use slack-sync, so only slack-sync needs to know about
     how to get stuff from source, and we can more easily add support
     for other roles sources

@@ -53,6 +53,9 @@ select((select(STDERR), $|=1)[0]);
 my $usage = Slack::default_usage("$PROG [options] [<role>...]");
 $usage .= <<EOF;
 
+  --all
+      Processes all roles assigned.
+
   --preview MODE
       Do a diff of scripts and files before running them.
       MODE can be one of 'simple' or 'prompt'.
@@ -95,6 +98,7 @@ my %command_line_opt = ();
 Slack::get_options(
   opthash => \%opt,
   command_line_options => [
+    'all',
     'preview=s',
     'role-list=s',
     'list-roles',
@@ -135,7 +139,7 @@ if (defined $command_line_opt{'verbose'} and
   }
 }
 # propagate these flags to all the backends
-for my $option (qw(config root cache stage source hostname rsh)) {
+for my $option (qw(ignore config root cache stage source hostname rsh)) {
   if ($command_line_opt{$option}) {
     for my $action (keys %backend_flags) {
       push @{$backend_flags{$action}},
@@ -194,7 +198,7 @@ if ($opt{sleep}) {
 }
 
 # Get a list of roles to install from slack-getroles {{{
-if (not @ARGV) {
+if ($opt{'all'}) {
   my @command = ($opt{'libexec-dir'}.'/slack-getroles',
     @{$backend_flags{'getroles'}});
   $opt{verbose} and print STDERR "$PROG: getroles\n";
@@ -213,6 +217,11 @@ if (not @ARGV) {
   unless (close($roles_fh)) {
     Slack::check_system_exit(@command);
   }
+# show help if slack is run without any args
+} elsif (not @ARGV) {
+  print "No roles specified! See --all or specify individual roles.\n";
+  print $usage;
+  exit 0;
 } else {
   @roles = @ARGV;
 }

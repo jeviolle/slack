@@ -21,18 +21,6 @@ use constant LIB_DIR => '/usr/lib/slack';
 use lib LIB_DIR;
 use Slack;
 
-my @rsync = ('rsync',
-              '--exclude-from=/etc/slack/slackignore', # default global ignore list
-              '--recursive',
-              '--links', # copy symlinks as symlinks - jeviolle
-              '--times',
-              '--perms',
-              '--sparse',
-              '--delete',
-              '--files-from=-',
-              '--from0',
-              );
-
 (my $PROG = $0) =~ s#.*/##;
 
 sub check_cache ($);
@@ -60,6 +48,19 @@ Slack::get_options(
   usage => $usage,
   required_options => [ qw(source cache) ],
 );
+
+# rsync options
+my @rsync = ('rsync',
+              "--exclude-from=$opt{'ignore'}",
+              '--recursive',
+              '--links', # copy symlinks as symlinks - jeviolle
+              '--times',
+              '--perms',
+              '--sparse',
+              '--delete',
+              '--files-from=-',
+              '--from0',
+              );
 
 # Arguments are required
 die "No roles given! Or you have excluded all the roles for this host!\n\n$usage" unless @ARGV;

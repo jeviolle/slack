@@ -21,7 +21,7 @@ $ENV{PERL5LIB} = $srcdir;
   rmtree($root);
   die "Could not remove root before testing" if -e $root;
 
-  my $return = system("../src/slack --libexec-dir=$srcdir -C $test_config_file >/dev/null 2>&1");
+  my $return = system("../src/slack --all --libexec-dir=$srcdir -C $test_config_file >/dev/null 2>&1");
   ok(($return == 0 and $? == 0), "slack return");
   # Make sure all the files are installed
   my $source_files = {};
@@ -61,7 +61,7 @@ $ENV{PERL5LIB} = $srcdir;
   rmtree($root);
   die "Could not remove root before testing" if -e $root;
 
-  my $return = system("../src/slack --libexec-dir=$srcdir -C $test_config_file --exclude role1,role2.sub,role3.sub.sub > /dev/null 2>&1");
+  my $return = system("../src/slack --all --libexec-dir=$srcdir -C $test_config_file --exclude role1,role2.sub,role3.sub.sub > /dev/null 2>&1");
   isnt(($return == 0 and $? == 0), "slack --exclude return");
 }
 

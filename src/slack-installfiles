@@ -113,13 +113,6 @@ sub install_files ($) {
   my $destination = $opt{root} . "/";
   my @command = (@rsync, $source, $destination);
 
-  # attempt to create a link to the latest run for the role - jeviolle
-  if ( $opt{'backup-dir'} =~ /(.+)\/([2-9].+)$/) {
-    my $backup_dir = $1;
-    my $backup_dir_ts = $2;
-    `ln -snf $opt{'backup-dir'} $backup_dir/$role-$backup_dir_ts`;
-  }
-
   if (not -d $source) {
     ($opt{verbose} > 0) and
         print STDERR "$PROG: No files to install -- '$source' does not exist\n";
@@ -153,4 +146,12 @@ sub install_files ($) {
   unless (close($fh)) {
     Slack::check_system_exit(@command);
   }
+  
+  # attempt to create a link to the latest run for the role - jeviolle
+  if ( $opt{'backup-dir'} =~ /(.+)\/([2-9].+)$/) {
+    my $backup_dir = $1;
+    my $backup_dir_ts = $2;
+    symlink("$opt{'backup-dir'}", "$backup_dir/$role-$backup_dir_ts");
+  }
+
 }

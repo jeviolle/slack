@@ -225,20 +225,52 @@ sub sync_role ($$@) {
   # this will be used in slack-installfiles and compared in postinstall
   # for potential triggers
   if ($destination =~ /\/files(\.)?\/$/) {
-    my $newfiles = "../NEWFILES";
-    if ($1) { $newfiles .= $1; }
+    my $new_files = "../NEWFILES";
+    my $file_list = "../FILES";
+    my $missing_files = "../MISSINGFILES";
 
-    unlink "$destination/$newfiles";
-    open(FH, ">", "$destination/$newfiles") || die "Failed to open $destination/$newfiles : $!\n";
+    if ($1) { 
+      $new_files .= $1; 
+      $file_list .= $1;
+      $missing_files .= $1;
+    }
+
+    rename "$destination/$file_list", "$destination/$file_list.lastrun" if ( -f "$destination/$file_list");
+    unlink "$destination/$new_files", "$destination/$missing_files";
     chdir $destination;
+
+    # generate file list
+    open(FL, ">", "$destination/$file_list") || die "Failed to open $destination/$file_list : $!\n";
+    find({
+      wanted => sub {
+        print FL "$File::Find::name\n" if ( -f );
+      },
+    },'.');
+    close(FL);
+
+    # see what is missing between the file lists (aka removed files between versions)
+    if ( -f "$destination/$file_list.lastrun" ) {
+      open(RMF, ">", "$destination/$missing_files") || die "Failed to open $destination/$missing_files : $!\n";
+      open(FFS, "slack-diff $destination/$file_list.lastrun $destination/$file_list|") || die "Failed to run slack-diff against file lists : $!\n";
+        while(<FFS>) {
+          print RMF "$1\n" if (/^\< (.+)$/);
+        } 
+      close(FFS);
+      close(RMF);
+    }
+
+    # find new_files that will be installed
+    # see what is missing from the filesystem (truly new files, not files newly managed)
+    open(FH, ">", "$destination/$new_files") || die "Failed to open $destination/$new_files : $!\n";
     find({
       wanted => sub {
         if (-f) {
-          unless ( -f "$opt{'root'}$File::Find::name" ) { print FH $File::Find::name; }
+          unless ( -f "$opt{'root'}$File::Find::name" ) { print FH "$File::Find::name\n"; }
         }
       },
     },'.'); 
     close(FH);
+
   }
 }
 

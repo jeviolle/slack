@@ -4,8 +4,9 @@
 # 
 
 - logging!
-- add RMFILES to compliment NEWFILES for diff?
+- add roleusage?
 - add --remove/uninstall of roll to clean up
+  - maybe compare roles.conf and autoremove prior to new roles being added?
 - add --rollback and tests to rolls?
 - add --reporting
 - add --lint (best practices check)

@@ -1,6 +1,6 @@
 Name:		slack
 Version:	0.15.3
-Release:	1
+Release:	2
 Summary:	slack configuration management tool
 Group:		System Environment/Libraries
 License:	GPL
